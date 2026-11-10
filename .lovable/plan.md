@@ -77,8 +77,12 @@ Cancel: token hashed and matched; cut-off (e.g. 1 hour before) enforced. Resched
 
 ## 5. Security
 - RLS on every table with explicit grants.
-- Public: read active communities, shops, barbers (public fields), services, hours. No public access to bookings.
-- All booking inserts/updates only via Edge Functions; input validation and rate limits there.
+- Public: read active communities, shops, services, hours, and barbers only through a restricted `public_barbers` view (id, shop_id, name_en/ar, photo_url, services offered). The barbers table itself has no public access, so user_id and account details are never exposed. No public access to bookings.
+- All booking inserts/updates only via Edge Functions.
+- Protected Edge Functions (reschedule-booking, staff cancel, admin-create-barber, every dashboard write) verify the caller login token on every request, then check role and shop ownership (own calendar, manager shop, or admin) before acting; otherwise return 401/403.
+- Public functions (get-availability, create-booking, cancel-booking) validate every input with a schema (IDs, dates within booking window, Saudi mobile format, text lengths, sanitised text) and reject anything else.
+- Rate limits: Supabase has no built-in rate limiter, so a small database-backed limiter counts requests per IP and per mobile in a time window (e.g. 5 bookings/hour per mobile, 60 availability checks/minute per IP). A practical safeguard, not full abuse protection; an external limiter can be added later.
+- The service role key lives only in Edge Function secrets: never in frontend code, committed env files, GitHub or logs. The frontend uses only the publishable key; .env files are git-ignored.
 - Barbers see only their own calendar and bookings; shop managers see all barbers in their shop; admins see all communities. Role checks via a security-definer `has_role` function, never client-side.
 - Public sign-up disabled; barber accounts created by admins.
 - Customer mobile and apartment visible only to that shop's staff and admins. Manage links use random tokens stored only as hashes.

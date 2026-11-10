@@ -1,71 +1,101 @@
-# TrimTime — MVP Implementation Plan
+# TrimTime — MVP Implementation Plan (revised)
+
+## Confirmed decisions
+- Supabase Edge Functions handle all secure booking logic (no built-in server functions).
+- Bookings are automatically confirmed after server-side validation and successful database insert.
+- Multiple barbers per shop, each with an individual calendar.
+- Customers choose a specific barber or "Any Available Barber".
+- Every booking stores barber_id; overlaps for the same barber are blocked by a PostgreSQL constraint, while different barbers in one shop can be booked at the same time.
 
 ## 1. Requirements summary
-- Bilingual (English LTR / Arabic RTL) booking site for barber shops inside gated communities in Dammam.
-- Phase 1: guests book without an account (name, mobile, building, apartment), then confirm or cancel through a private link.
-- Barbers sign in to manage their shop, services, hours, breaks, holidays and bookings.
-- Admins manage communities, shops, barber accounts and see all bookings.
-- Out of scope for MVP: payments, SMS OTP, WhatsApp automation, customer accounts, mobile app.
+- Bilingual (English LTR / Arabic RTL) booking site for barber shops inside gated communities in Dammam, with a language switcher on every screen.
+- Phase 1: guests book without an account (name, mobile, building, apartment), pick service, barber (or Any), date and time; booking is confirmed instantly; guests cancel securely via a private link.
+- Barber dashboard: secure login; manage shop details, services, prices, durations, working hours, breaks, holidays; view, cancel, reschedule bookings.
+- Admin dashboard: manage communities, shops, barber accounts; view bookings across communities.
+- Phase 2 (later): customer app, accounts, history, offers, loyalty.
+- Excluded from MVP: online payments, SMS OTP, automated WhatsApp.
 
 ## 2. Architecture
 ```text
-Browser (EN/AR, RTL/LTR)
-   |  public pages: communities -> shops -> services -> slot -> confirm
-   |  /barber/*   (signed-in barber)
-   |  /admin/*    (signed-in admin)
-   v
-Server functions (booking, slot calculation, cancel-by-token, account creation)
-   v
-Your existing Supabase project (Postgres + Auth + Row Level Security)
+Browser (React + TypeScript, EN/AR, RTL/LTR)
+  | public: communities -> shop -> service -> barber or Any -> date/slot -> details -> confirmed
+  | /barber/*  signed-in barbers and shop managers
+  | /admin/*   signed-in admins
+  v
+Supabase Edge Functions (existing project)
+  - get-availability     slots for one barber or for "Any"
+  - create-booking       validate, assign barber, insert as confirmed
+  - cancel-booking       cancel via secret token
+  - reschedule-booking   barber/manager moves a booking (time and/or barber)
+  - admin-create-barber  admin creates barber login accounts
+  v
+PostgreSQL (existing Supabase project) + Auth + Row Level Security
 ```
-- Frontend: React + TypeScript (this project's built-in framework), Tailwind, shadcn UI.
-- Backend: your existing Supabase project, connected by you in Settings -> External Supabase. No new project is created.
-- Server logic: this project's built-in server functions instead of Supabase Edge Functions (same security, deploys with the app, no separate deploy step). Tell me if Edge Functions are a hard requirement.
-- Source control: connect your existing `trimtime` repo via Settings -> GitHub. Note: Lovable's GitHub connection normally creates a repo; linking an existing one may require importing it — to confirm when connecting.
-- i18n: lightweight dictionary (en.json / ar.json), language in the URL or a cookie, `<html dir="rtl" lang="ar">` switching, Arabic-friendly font (e.g. IBM Plex Sans Arabic + a matching Latin font), Tailwind logical spacing (ms/me/ps/pe) everywhere.
+- Frontend in this project; reads of public catalogue data go directly to the database under RLS; all booking writes go through Edge Functions.
+- Edge Functions use the service key only on the server; the browser never gets elevated access.
+- Backend: your existing Supabase project, connected by you in Settings -> External Supabase. No second project.
+- Source control: your existing private `trimtime` repo via Settings -> GitHub (linking an existing repo may need a manual step on your side). Edge Function code lives in the repo's Supabase functions folder.
+- i18n: en/ar dictionaries, `<html dir lang>` switching, logical spacing (start/end) everywhere, Arabic-friendly font pair, bilingual name fields in the database.
 - Times stored in UTC, displayed in Asia/Riyadh.
 
-## 3. Database tables
+## 3. Database tables and relationships
 | Table | Key fields | Relationships |
 |---|---|---|
-| communities | id, name_en, name_ar, slug, area, is_active | — |
-| shops | id, community_id, name_en/ar, description_en/ar, phone, location_note, slot_interval_min, is_active | community 1-N shops |
-| shop_members | shop_id, user_id | links barber accounts to shops |
-| user_roles | user_id, role (admin, barber) | separate table, never on profile |
-| services | id, shop_id, name_en/ar, price_sar, duration_min, is_active, sort | shop 1-N services |
-| working_hours | shop_id, weekday, open_time, close_time | per weekday |
-| breaks | shop_id, weekday, start_time, end_time | per weekday |
-| holidays | shop_id, date, reason | closed dates |
-| bookings | id, community_id, shop_id, service_id, starts_at, ends_at, customer_name, customer_mobile, building, apartment, status (pending/confirmed/cancelled/completed), manage_token_hash, language, created_at | belongs to shop + community + service |
+| communities | id, name_en, name_ar, slug, is_active | 1-N shops |
+| shops | id, community_id, name_en/ar, description_en/ar, phone, location_note, slot_interval_min, is_active | belongs to community; 1-N barbers, services |
+| user_roles | user_id, role (admin, shop_manager, barber) | separate table, never on profiles |
+| shop_managers | shop_id, user_id | manager accounts for a shop |
+| barbers | id, shop_id, user_id (unique, nullable -> auth user), name_en/ar, photo_url, is_active | belongs to shop; links to barber login account |
+| services | id, shop_id, name_en/ar, price_sar, duration_min, is_active, sort | belongs to shop |
+| barber_services | barber_id, service_id | which barbers perform which services |
+| working_hours | barber_id, weekday, open_time, close_time | per-barber weekly schedule |
+| breaks | barber_id, weekday, start_time, end_time | per-barber breaks |
+| holidays | shop_id, barber_id (nullable), date, reason | whole-shop closure or one barber's day off |
+| bookings | id, community_id, shop_id, barber_id (NOT NULL -> barbers), service_id, requested_any_barber (bool), price_sar, duration_min, starts_at, ends_at, status (confirmed, cancelled, completed, no_show), customer_name, customer_mobile, building, apartment, language, manage_token_hash, created_at, cancelled_at | belongs to community, shop, barber, service |
 
-Double-booking prevention: Postgres exclusion constraint on `bookings` (shop_id + time range overlap, where status not cancelled). The database itself rejects overlapping bookings, even under simultaneous requests. A trigger ensures `bookings.community_id` always matches the shop's community.
+Integrity rules:
+- Overlap constraint: `EXCLUDE USING gist (barber_id WITH =, tstzrange(starts_at, ends_at) WITH &&) WHERE (status <> 'cancelled')` (btree_gist extension). Same barber cannot be double-booked, even with simultaneous requests; different barbers are independent.
+- Trigger checks: barber belongs to the booking's shop, shop belongs to the booking's community, barber offers the service, ends_at = starts_at + duration.
+- Price and duration copied onto the booking so later price changes don't alter history.
 
-## 4. Security
-- Row Level Security on every table; explicit grants per role.
-- Public can read only active communities, shops, services and hours. Public cannot read bookings at all.
-- Guests create bookings only through a server function that validates input (Saudi mobile format 05XXXXXXXX, lengths), recomputes availability and price server-side, and rate-limits by mobile/shop.
-- Confirm/cancel uses a random secret link; only its hash is stored. Cancellation cut-off (e.g. 1 hour before) enforced server-side.
-- Barbers see and edit only rows for their own shops (via shop_members). Admins checked with a `has_role` security-definer function — never client-side.
-- Barber accounts created by admins only (public signup disabled).
-- Customer personal data (mobile, apartment) visible only to that shop's barbers and admins.
+## 4. Slot calculation and booking workflow
+Availability for one barber on a date:
+1. Start from that barber's working hours for the weekday.
+2. Remove breaks, shop holidays and the barber's days off.
+3. Remove existing non-cancelled bookings for that barber.
+4. Generate start times every slot_interval_min where the full service duration fits; hide past times and enforce a minimum lead time.
 
-## 5. Phases (2–3 day MVP)
-- Day 1 — Foundation: connect Supabase, schema + RLS + seed data (1 community, 2 shops), design system, EN/AR + RTL layout, language switcher, public browse pages.
-- Day 1–2 — Booking flow: slot calculator (hours − breaks − holidays − existing bookings), booking form, confirmation page with manage link, cancel page.
-- Day 2 — Barber dashboard: login, shop details, services, hours/breaks/holidays, bookings list (today/upcoming), cancel and reschedule.
-- Day 3 — Admin dashboard: communities, shops, barber account invites, cross-community bookings with filters; QA in both languages, mobile layout check, publish.
-- Phase 2 (later): customer accounts and history, offers/loyalty, SMS/WhatsApp notifications, mobile app (can reuse the same database and RLS).
+"Any Available Barber": run the above for every active barber who offers the service; a time is shown if at least one barber is free.
 
-## 6. Technical risks
-- No OTP means fake/no-show bookings: mitigate with rate limits, one active booking per mobile per shop, barber can mark no-show.
-- Guests lose their manage link: show it clearly, offer "copy link" and WhatsApp share button (manual, not automated).
-- RTL edge cases (icons, date pickers, mixed Arabic/number text): use logical CSS and test every screen in Arabic.
-- Timezone/DST: Saudi has no DST, but store UTC and convert consistently.
-- Existing Supabase project may already have tables/policies: I'll inspect before migrating to avoid conflicts.
-- Existing GitHub repo linking may need a manual step on your side.
-- Free tier limits (DB size, auth emails) — fine for MVP volumes.
+create-booking:
+1. Validate input (Saudi mobile 05XXXXXXXX, required fields, lengths, service active, date within booking window), rate-limit per mobile/shop.
+2. Recompute availability server-side (never trust the browser).
+3. Specific barber: insert for that barber. Any: order free barbers by fewest bookings that day, try insert; on overlap-constraint error, try the next barber.
+4. On success, save status = confirmed, return booking summary, assigned barber and secret manage link. If no barber remains free, return "slot just taken" and the customer picks again.
 
-## Decisions for you to confirm
-1. OK to use built-in server functions instead of Supabase Edge Functions?
-2. Should new bookings be auto-confirmed, or require barber confirmation?
-3. One barber per shop (single calendar) for MVP, or multiple barbers each with their own calendar?
+Cancel: token hashed and matched; cut-off (e.g. 1 hour before) enforced. Reschedule (barber side): same validation and constraint; may move to another barber in the shop.
+
+## 5. Security
+- RLS on every table with explicit grants.
+- Public: read active communities, shops, barbers (public fields), services, hours. No public access to bookings.
+- All booking inserts/updates only via Edge Functions; input validation and rate limits there.
+- Barbers see only their own calendar and bookings; shop managers see all barbers in their shop; admins see all communities. Role checks via a security-definer `has_role` function, never client-side.
+- Public sign-up disabled; barber accounts created by admins.
+- Customer mobile and apartment visible only to that shop's staff and admins. Manage links use random tokens stored only as hashes.
+
+## 6. Phases (2–3 day MVP)
+- Day 1: connect Supabase, schema + constraints + RLS + seed data (1 community, 2 shops, several barbers), design system, EN/AR + RTL, public browse pages.
+- Day 1–2: Edge Functions (availability, create, cancel), barber picker with Any, slot picker, booking form, confirmation and cancel pages.
+- Day 2: barber dashboard — login, shop details, barbers and their services, per-barber hours/breaks/days off, per-barber day calendar, cancel and reschedule.
+- Day 3: admin dashboard — communities, shops, barber accounts, cross-community bookings with filters; QA in both languages and on mobile; publish.
+- Phase 2: customer app and accounts, history, offers/loyalty, notifications — reusing the same database and RLS.
+
+## 7. Technical risks
+- No OTP: fake bookings/no-shows — mitigate with rate limits, one active booking per mobile per shop, no-show marking.
+- Lost manage link: clear display, copy button, manual WhatsApp share link.
+- Simultaneous "Any" bookings: handled by the database constraint plus retry.
+- Edge Functions deploy separately from the frontend and add a little latency on cold start.
+- RTL edge cases (icons, date pickers, mixed digits): logical CSS, test every screen in Arabic.
+- Existing Supabase project may already contain tables/policies — inspect before migrating.
+- Linking the existing GitHub repo may need a manual step.
+- Free-tier limits are fine for MVP volumes.

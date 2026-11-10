@@ -54,7 +54,7 @@ PostgreSQL (existing Supabase project) + Auth + Row Level Security
 | bookings | id, community_id, shop_id, barber_id (NOT NULL -> barbers), service_id, requested_any_barber (bool), price_sar, duration_min, starts_at, ends_at, status (confirmed, cancelled, completed, no_show), customer_name, customer_mobile, building, apartment, language, manage_token_hash, created_at, cancelled_at | belongs to community, shop, barber, service |
 
 Integrity rules:
-- Overlap constraint: `EXCLUDE USING gist (barber_id WITH =, tstzrange(starts_at, ends_at) WITH &&) WHERE (status <> 'cancelled')` (btree_gist extension). Same barber cannot be double-booked, even with simultaneous requests; different barbers are independent.
+- Overlap constraint: `EXCLUDE USING gist (barber_id WITH =, tstzrange(starts_at, ends_at, '[)') WITH &&) WHERE (status <> 'cancelled')` (btree_gist extension). The half-open [) range means a booking ending at 10:30 does not conflict with one starting at 10:30, so back-to-back appointments are allowed. Same barber cannot be double-booked, even with simultaneous requests; different barbers are independent.
 - Trigger checks: barber belongs to the booking's shop, shop belongs to the booking's community, barber offers the service, ends_at = starts_at + duration.
 - Price and duration copied onto the booking so later price changes don't alter history.
 

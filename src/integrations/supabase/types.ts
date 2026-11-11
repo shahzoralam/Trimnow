@@ -542,10 +542,6 @@ export type Database = {
       }
     }
     Functions: {
-      can_view_barber: {
-        Args: { _barber_id: string; _user_id: string }
-        Returns: boolean
-      }
       check_rate_limit: {
         Args: {
           _bucket: string
@@ -554,35 +550,6 @@ export type Database = {
           _window_seconds: number
         }
         Returns: boolean
-      }
-      has_role: {
-        Args: {
-          _role: Database["public"]["Enums"]["app_role"]
-          _user_id: string
-        }
-        Returns: boolean
-      }
-      is_barber_public: { Args: { _barber_id: string }; Returns: boolean }
-      is_shop_manager: {
-        Args: { _shop_id: string; _user_id: string }
-        Returns: boolean
-      }
-      is_shop_public: { Args: { _shop_id: string }; Returns: boolean }
-      is_shop_staff: {
-        Args: { _shop_id: string; _user_id: string }
-        Returns: boolean
-      }
-      list_public_barbers: {
-        Args: never
-        Returns: {
-          id: string
-          name_ar: string
-          name_en: string
-          photo_url: string
-          service_ids: string[]
-          shop_id: string
-          sort_order: number
-        }[]
       }
     }
     Enums: {

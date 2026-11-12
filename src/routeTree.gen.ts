@@ -10,33 +10,86 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as LangRouteImport } from './routes/$lang'
+import { Route as LangIndexRouteImport } from './routes/$lang.index'
+import { Route as LangCommunityCommunitySlugIndexRouteImport } from './routes/$lang.community.$communitySlug.index'
+import { Route as LangCommunityCommunitySlugShopSlugRouteImport } from './routes/$lang.community.$communitySlug.$shopSlug'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LangRoute = LangRouteImport.update({
+  id: '/$lang',
+  path: '/$lang',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LangIndexRoute = LangIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => LangRoute,
+} as any)
+const LangCommunityCommunitySlugIndexRoute =
+  LangCommunityCommunitySlugIndexRouteImport.update({
+    id: '/community/$communitySlug/',
+    path: '/community/$communitySlug/',
+    getParentRoute: () => LangRoute,
+  } as any)
+const LangCommunityCommunitySlugShopSlugRoute =
+  LangCommunityCommunitySlugShopSlugRouteImport.update({
+    id: '/community/$communitySlug/$shopSlug',
+    path: '/community/$communitySlug/$shopSlug',
+    getParentRoute: () => LangRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/$lang': typeof LangRouteWithChildren
+  '/$lang/': typeof LangIndexRoute
+  '/$lang/community/$communitySlug/$shopSlug': typeof LangCommunityCommunitySlugShopSlugRoute
+  '/$lang/community/$communitySlug/': typeof LangCommunityCommunitySlugIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/$lang': typeof LangIndexRoute
+  '/$lang/community/$communitySlug/$shopSlug': typeof LangCommunityCommunitySlugShopSlugRoute
+  '/$lang/community/$communitySlug': typeof LangCommunityCommunitySlugIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/$lang': typeof LangRouteWithChildren
+  '/$lang/': typeof LangIndexRoute
+  '/$lang/community/$communitySlug/$shopSlug': typeof LangCommunityCommunitySlugShopSlugRoute
+  '/$lang/community/$communitySlug/': typeof LangCommunityCommunitySlugIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/$lang'
+    | '/$lang/'
+    | '/$lang/community/$communitySlug/$shopSlug'
+    | '/$lang/community/$communitySlug/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/$lang'
+    | '/$lang/community/$communitySlug/$shopSlug'
+    | '/$lang/community/$communitySlug'
+  id:
+    | '__root__'
+    | '/'
+    | '/$lang'
+    | '/$lang/'
+    | '/$lang/community/$communitySlug/$shopSlug'
+    | '/$lang/community/$communitySlug/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  LangRoute: typeof LangRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +101,55 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/$lang': {
+      id: '/$lang'
+      path: '/$lang'
+      fullPath: '/$lang'
+      preLoaderRoute: typeof LangRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/$lang/': {
+      id: '/$lang/'
+      path: '/'
+      fullPath: '/$lang/'
+      preLoaderRoute: typeof LangIndexRouteImport
+      parentRoute: typeof LangRoute
+    }
+    '/$lang/community/$communitySlug/': {
+      id: '/$lang/community/$communitySlug/'
+      path: '/community/$communitySlug'
+      fullPath: '/$lang/community/$communitySlug/'
+      preLoaderRoute: typeof LangCommunityCommunitySlugIndexRouteImport
+      parentRoute: typeof LangRoute
+    }
+    '/$lang/community/$communitySlug/$shopSlug': {
+      id: '/$lang/community/$communitySlug/$shopSlug'
+      path: '/community/$communitySlug/$shopSlug'
+      fullPath: '/$lang/community/$communitySlug/$shopSlug'
+      preLoaderRoute: typeof LangCommunityCommunitySlugShopSlugRouteImport
+      parentRoute: typeof LangRoute
+    }
   }
 }
 
+interface LangRouteChildren {
+  LangIndexRoute: typeof LangIndexRoute
+  LangCommunityCommunitySlugShopSlugRoute: typeof LangCommunityCommunitySlugShopSlugRoute
+  LangCommunityCommunitySlugIndexRoute: typeof LangCommunityCommunitySlugIndexRoute
+}
+
+const LangRouteChildren: LangRouteChildren = {
+  LangIndexRoute: LangIndexRoute,
+  LangCommunityCommunitySlugShopSlugRoute:
+    LangCommunityCommunitySlugShopSlugRoute,
+  LangCommunityCommunitySlugIndexRoute: LangCommunityCommunitySlugIndexRoute,
+}
+
+const LangRouteWithChildren = LangRoute._addFileChildren(LangRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  LangRoute: LangRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

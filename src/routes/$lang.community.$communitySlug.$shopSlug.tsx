@@ -10,7 +10,7 @@ import {
   RouteNotFoundView,
 } from "@/components/public/blocks";
 import { useLang } from "@/components/public/use-lang";
-import { formatSar, isLang, pickLocalized, t, type Lang } from "@/lib/i18n";
+import { formatNumber, formatSar, isLang, pickLocalized, t, type Lang } from "@/lib/i18n";
 import { shopQuery, type PublicBarber, type PublicService } from "@/lib/public-data";
 
 export const Route = createFileRoute("/$lang/community/$communitySlug/$shopSlug")({
@@ -104,11 +104,11 @@ function ShopPage() {
   );
 }
 
-function SectionTitle({ children, count }: { children: string; count?: number }) {
+function SectionTitle({ children, count, lang }: { children: string; count?: number; lang: Lang }) {
   return (
     <h2 className="mb-3 flex items-baseline gap-2 font-display text-xl font-semibold">
       {children}
-      {count ? <span className="text-sm font-normal text-muted-foreground">({count})</span> : null}
+      {count ? <span className="text-sm font-normal text-muted-foreground">({formatNumber(count, lang)})</span> : null}
     </h2>
   );
 }
@@ -117,7 +117,7 @@ function ServicesSection({ services, lang }: { services: PublicService[]; lang: 
   const copy = t(lang);
   return (
     <div>
-      <SectionTitle count={services.length}>{copy.services}</SectionTitle>
+      <SectionTitle count={services.length} lang={lang}>{copy.services}</SectionTitle>
       {services.length === 0 ? (
         <EmptyState icon={Scissors} title={copy.noServices} />
       ) : (
@@ -154,7 +154,7 @@ function BarbersSection({
 
   return (
     <div>
-      <SectionTitle count={barbers.length}>{copy.barbers}</SectionTitle>
+      <SectionTitle count={barbers.length} lang={lang}>{copy.barbers}</SectionTitle>
       {barbers.length === 0 ? (
         <EmptyState icon={UserRound} title={copy.noBarbers} />
       ) : (

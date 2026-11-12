@@ -36,3 +36,5 @@ use the editor.
 - Customers read barber data only through the `public_barbers` view; the `barbers` table has no anon access. Why: hides user_id and account data.
 - Booking price, duration and ends_at are derived from the service by the `bookings_before_write` trigger; double-booking is blocked by the `bookings_no_barber_overlap` exclusion constraint (`tstzrange(starts_at, ends_at, '[)')`, non-cancelled only). Why: the database, not app code, is the source of truth for integrity.
 - Edge Functions use `public.check_rate_limit(bucket, key_hash, max, window_seconds)` with hashed IP/mobile keys. Why: Supabase has no built-in rate limiter.
+- Public pages live under a `/$lang` (en|ar) URL segment; `<html lang dir>` is derived from it in `__root.tsx` and `/` redirects to the saved or default language. Why: SSR renders the correct language and RTL without a flash, and links are shareable per language.
+- Public catalogue reads (communities, shops, services, `public_barbers`) use the browser Supabase client inside TanStack Query `queryOptions` in `src/lib/public-data.ts`, primed by route loaders. Why: read-only anon data under RLS needs no server code.

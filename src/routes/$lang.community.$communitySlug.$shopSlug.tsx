@@ -1,6 +1,7 @@
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { Link, createFileRoute, notFound } from "@tanstack/react-router";
-import { Clock, MapPin, Phone, Scissors, Shuffle, UserRound } from "lucide-react";
+import { CalendarDays, Clock, MapPin, Phone, Scissors, Shuffle, UserRound } from "lucide-react";
 
 import {
   BackIcon,
@@ -11,7 +12,13 @@ import {
 } from "@/components/public/blocks";
 import { useLang } from "@/components/public/use-lang";
 import { formatNumber, formatSar, isLang, pickLocalized, t, type Lang } from "@/lib/i18n";
-import { shopQuery, type PublicBarber, type PublicService } from "@/lib/public-data";
+import {
+  availabilityQuery,
+  riyadhDates,
+  shopQuery,
+  type PublicBarber,
+  type PublicService,
+} from "@/lib/public-data";
 
 export const Route = createFileRoute("/$lang/community/$communitySlug/$shopSlug")({
   loader: async ({ context, params }) => {
@@ -99,6 +106,13 @@ function ShopPage() {
       <div className="grid gap-10">
         <ServicesSection services={services} lang={lang} />
         <BarbersSection barbers={barbers} services={services} lang={lang} />
+        <AvailabilitySection
+          shopId={shop.id}
+          windowDays={shop.booking_window_days}
+          services={services}
+          barbers={barbers}
+          lang={lang}
+        />
       </div>
     </section>
   );
@@ -208,6 +222,194 @@ function BarbersSection({
           })}
         </ul>
       )}
+    </div>
+  );
+}
+
+const AVAIL_COPY = {
+  en: {
+    title: "Available times",
+    hint: "Pick a service, a barber and a day to see free times. Booking comes in the next step.",
+    service: "Service",
+    barber: "Barber",
+    day: "Day",
+    any: "Any Available Barber",
+    loading: "Checking free times…",
+    none: "No free times on this day. Try another day or barber.",
+    error: "Free times can't be loaded right now. Please try again later.",
+    rateLimited: "Too many checks. Please wait a minute and try again.",
+    times: "Riyadh time",
+  },
+  ar: {
+    title: "المواعيد المتاحة",
+    hint: "اختر الخدمة والحلاق واليوم لعرض المواعيد المتاحة. الحجز في الخطوة التالية.",
+    service: "الخدمة",
+    barber: "الحلاق",
+    day: "اليوم",
+    any: "أي حلاق متاح",
+    loading: "جارٍ البحث عن المواعيد…",
+    none: "لا توجد مواعيد متاحة في هذا اليوم. جرّب يومًا أو حلاقًا آخر.",
+    error: "تعذّر تحميل المواعيد الآن. حاول مرة أخرى لاحقًا.",
+    rateLimited: "طلبات كثيرة. انتظر دقيقة ثم حاول مجددًا.",
+    times: "بتوقيت الرياض",
+  },
+} as const;
+
+function AvailabilitySection({
+  shopId,
+  windowDays,
+  services,
+  barbers,
+  lang,
+}: {
+  shopId: string;
+  windowDays: number;
+  services: PublicService[];
+  barbers: PublicBarber[];
+  lang: Lang;
+}) {
+  const c = AVAIL_COPY[lang];
+  const locale = lang === "ar" ? "ar-SA" : "en-GB";
+  const [serviceId, setServiceId] = useState<string>(services[0]?.id ?? "");
+  const [barberId, setBarberId] = useState<string | null>(null);
+  // Dates depend on "now"; compute after hydration to avoid SSR mismatch.
+  const [dates, setDates] = useState<string[]>([]);
+  const [date, setDate] = useState<string>("");
+  useEffect(() => {
+    const list = riyadhDates(Math.max(1, Math.min(windowDays, 90)));
+    setDates(list);
+    setDate((d) => d || list[0] || "");
+  }, [windowDays]);
+
+  const eligible = useMemo(
+    () => barbers.filter((b) => b.service_ids.includes(serviceId)),
+    [barbers, serviceId],
+  );
+  useEffect(() => {
+    if (barberId && !eligible.some((b) => b.id === barberId)) setBarberId(null);
+  }, [eligible, barberId]);
+
+  const enabled = Boolean(serviceId && date);
+  const { data, isFetching } = useQuery({
+    ...availabilityQuery({ shopId, serviceId, date, barberId }),
+    enabled,
+  });
+
+  if (services.length === 0 || barbers.length === 0) return null;
+
+  const dayLabel = (d: string) =>
+    new Intl.DateTimeFormat(locale, {
+      timeZone: "UTC",
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    }).format(new Date(`${d}T00:00:00Z`));
+  const timeLabel = (iso: string) =>
+    new Intl.DateTimeFormat(locale, {
+      timeZone: "Asia/Riyadh",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(iso));
+
+  const chip = (active: boolean) =>
+    `shrink-0 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+      active
+        ? "border-primary bg-primary text-primary-foreground"
+        : "border-border bg-card hover:bg-secondary"
+    }`;
+
+  return (
+    <div>
+      <h2 className="mb-1 flex items-center gap-2 font-display text-xl font-semibold">
+        <CalendarDays className="size-5 text-primary" aria-hidden />
+        {c.title}
+      </h2>
+      <p className="mb-4 text-sm text-muted-foreground">{c.hint}</p>
+
+      <div className="grid gap-4 rounded-2xl border border-border bg-card p-4">
+        <fieldset>
+          <legend className="mb-2 text-sm font-semibold">{c.service}</legend>
+          <div className="flex flex-wrap gap-2">
+            {services.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                aria-pressed={serviceId === s.id}
+                onClick={() => setServiceId(s.id)}
+                className={chip(serviceId === s.id)}
+              >
+                {pickLocalized(s, "name", lang)}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend className="mb-2 text-sm font-semibold">{c.barber}</legend>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              aria-pressed={barberId === null}
+              onClick={() => setBarberId(null)}
+              className={chip(barberId === null)}
+            >
+              {c.any}
+            </button>
+            {eligible.map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                aria-pressed={barberId === b.id}
+                onClick={() => setBarberId(b.id)}
+                className={chip(barberId === b.id)}
+              >
+                {pickLocalized(b, "name", lang)}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend className="mb-2 text-sm font-semibold">{c.day}</legend>
+          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+            {dates.map((d) => (
+              <button
+                key={d}
+                type="button"
+                aria-pressed={date === d}
+                onClick={() => setDate(d)}
+                className={chip(date === d)}
+              >
+                {dayLabel(d)}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+        <div aria-live="polite">
+          <p className="mb-2 text-xs text-muted-foreground">{c.times}</p>
+          {!enabled || (isFetching && !data) ? (
+            <p className="text-sm text-muted-foreground">{c.loading}</p>
+          ) : data?.error ? (
+            <p className="text-sm text-destructive">
+              {data.error === "rate_limited" ? c.rateLimited : c.error}
+            </p>
+          ) : data && data.slots.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{c.none}</p>
+          ) : (
+            <ul className={`flex flex-wrap gap-2 ${isFetching ? "opacity-60" : ""}`}>
+              {data?.slots.map((s) => (
+                <li
+                  key={s.starts_at}
+                  className="rounded-lg border border-border bg-secondary px-3 py-1.5 text-sm font-medium text-secondary-foreground"
+                >
+                  {timeLabel(s.starts_at)}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

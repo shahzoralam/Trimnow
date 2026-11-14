@@ -16,6 +16,14 @@ type Booking = Tables<"bookings">;
 const inputClass = "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm";
 const buttonClass = "rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60";
 
+function Field({ label, value, onChange, type = "text", required = true }: { label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean }) {
+  return <label className="grid gap-1 text-sm font-medium">{label}<input required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} className={inputClass} /></label>;
+}
+
+function Select({ value, onChange, children }: { value: string; onChange: (value: string) => void; children: ReactNode }) {
+  return <select value={value} onChange={(event) => onChange(event.target.value)} className={inputClass}>{children}</select>;
+}
+
 function StaffPage() {
   const lang = useLang();
   const ar = lang === "ar";
@@ -169,8 +177,6 @@ function StaffPage() {
     setHours(h.data ?? []); setBreaks(b.data ?? []); setHolidays(hol.data ?? []); setBarberServiceIds((bs.data ?? []).map((x) => x.service_id));
   };
 
-  const Field = ({ label, value, onChange, type = "text", required = true }: { label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean }) => <label className="grid gap-1 text-sm font-medium">{label}<input required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} className={inputClass} /></label>;
-  const Select = ({ value, onChange, children }: { value: string; onChange: (value: string) => void; children: ReactNode }) => <select value={value} onChange={(event) => onChange(event.target.value)} className={inputClass}>{children}</select>;
   const section = "grid gap-4 rounded-2xl border border-border bg-card p-4 sm:p-5";
 
   if (!user) return <section dir={ar ? "rtl" : "ltr"} className="mx-auto grid max-w-md gap-5">

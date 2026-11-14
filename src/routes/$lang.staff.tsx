@@ -3,6 +3,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeading } from "@/components/public/blocks";
+import { AdminBarberEditor } from "@/components/staff/AdminBarberEditor";
+import { AdminDeletionPanel } from "@/components/staff/AdminDeletionPanel";
 import { useLang } from "@/components/public/use-lang";
 import type { Tables } from "@/integrations/supabase/types";
 
@@ -16,7 +18,7 @@ type Booking = Tables<"bookings">;
 const inputClass = "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm";
 const buttonClass = "rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60";
 
-function Field({ label, value, onChange, type = "text", required = true }: { label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean }) {
+function Field({ label, value, onChange, type = "text", required = !(import.meta.env.DEV && (type === "email" || type === "password")) }: { label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean }) {
   return <label className="grid gap-1 text-sm font-medium">{label}<input required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} className={inputClass} /></label>;
 }
 
@@ -54,12 +56,22 @@ function StaffPage() {
   const [barberForm, setBarberForm] = useState({ shop_id: "", name_en: "", name_ar: "", email: "", password: "" });
   const [barberServiceIds, setBarberServiceIds] = useState<string[]>([]);
   const [holidayForm, setHolidayForm] = useState({ date: "", reason: "" });
-  const [breakForm, setBreakForm] = useState({ weekday: "0", start_time: "12:00", end_time: "13:00" });
+  const [breakForm, setBreakForm] = useState({ id: "", weekday: "0", start_time: "12:00", end_time: "13:00" });
   const weekdays = ar ? ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"] : ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
   const refresh = useCallback(async (currentUser: User, currentRole: string) => {
-    const bookingQuery = supabase.from("bookings").select("*").order("starts_at").limit(250);
-    const filteredBookings = currentRole === "admin" ? bookingQuery : bookingQuery.gte("starts_at", new Date().toISOString());
+    if (currentUser.id === "development") {
+      const { data, error: loadError } = await supabase.functions.invoke("staff-management", { body: { action: "get-dashboard" } });
+      if (loadError || data?.error) return;
+      setCommunities(data.communities ?? []);
+      setShops(data.shops ?? []);
+      setServices(data.services ?? []);
+      setBarbers(data.barbers ?? []);
+      setBookings(data.bookings ?? []);
+      return;
+    }
+    const bookingQuery = supabase.from("bookings").select("*").order("starts_at");
+    const filteredBookings = bookingQuery;
     const [communityResult, shopResult, serviceResult, barberResult, bookingResult] = await Promise.all([
       supabase.from("communities").select("*").order("name_en"),
       supabase.from("shops").select("*").order("name_en"),
@@ -109,14 +121,17 @@ function StaffPage() {
       setRole(chosenRole);
       if (chosenRole) await refresh(data.session.user, chosenRole);
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        if (import.meta.env.DEV) { setUser(devUser); setRole("admin"); }
-        else { setUser(null); setRole(null); }
-      }
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!session && event === "SIGNED_OUT") { setUser(null); setRole(null); }
     });
     return () => { active = false; listener.subscription.unsubscribe(); };
   }, [refresh]);
+
+  useEffect(() => {
+    if (!user || !role) return;
+    const timer = window.setInterval(() => void refresh(user, role), 15_000);
+    return () => window.clearInterval(timer);
+  }, [user, role, refresh]);
 
   const submit = async (action: string, payload: Record<string, unknown>) => {
     setBusy(true); setError(""); setNotice("");
@@ -153,11 +168,12 @@ function StaffPage() {
     await submit("save-hours", { barber_id: role === "barber" ? myBarber?.id : selectedBarber, hours: list });
   };
   const changeStatus = async (bookingId: string, status: string) => { await submit("set-booking-status", { booking_id: bookingId, status }); };
-  const saveBreak = (event: FormEvent<HTMLFormElement>) => {
+  const saveBreak = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const weekday = Number(breakForm.weekday);
-    const existing = breaks.filter((item) => item.barber_id === allBarberIds && item.weekday === weekday).map((item) => ({ start_time: item.start_time.slice(0, 5), end_time: item.end_time.slice(0, 5) }));
-    void submit("save-breaks", { barber_id: allBarberIds, weekday, breaks: [...existing, { start_time: breakForm.start_time, end_time: breakForm.end_time }] });
+    const existing = breaks.filter((item) => item.barber_id === allBarberIds && item.weekday === weekday && item.id !== breakForm.id).map((item) => ({ start_time: item.start_time.slice(0, 5), end_time: item.end_time.slice(0, 5) }));
+    const result = await submit("save-breaks", { barber_id: allBarberIds, weekday, breaks: [...existing, { start_time: breakForm.start_time, end_time: breakForm.end_time }] });
+    if (result) setBreakForm({ id: "", weekday: String(weekday), start_time: "12:00", end_time: "13:00" });
   };
   const removeBreak = (breakId: string) => {
     const item = breaks.find((entry) => entry.id === breakId);
@@ -168,6 +184,14 @@ function StaffPage() {
   const chooseBarber = async (id: string) => {
     setSelectedBarber(id); setHours([]); setBreaks([]); setHolidays([]);
     if (!id) return;
+    if (user?.id === "development") {
+      const { data } = await supabase.functions.invoke("staff-management", { body: { action: "get-barber-schedule", barber_id: id } });
+      setHours(data?.hours ?? []);
+      setBreaks(data?.breaks ?? []);
+      setHolidays(data?.holidays ?? []);
+      setBarberServiceIds(data?.service_ids ?? []);
+      return;
+    }
     const [h, b, hol, bs] = await Promise.all([
       supabase.from("working_hours").select("*").eq("barber_id", id).order("weekday"),
       supabase.from("breaks").select("*").eq("barber_id", id).order("weekday"),
@@ -190,6 +214,7 @@ function StaffPage() {
   </section>;
 
   const isAdmin = role === "admin";
+  const adminLabel = ar ? "المشرف الأعلى" : "Super Admin";
   const staffBarber = isAdmin ? barbers.find((b) => b.id === selectedBarber) : myBarber;
   const today = new Date().toISOString().slice(0, 10);
   const displayDate = (iso: string) => new Intl.DateTimeFormat(ar ? "ar-SA" : "en-GB", { timeZone: "Asia/Riyadh", dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
@@ -198,11 +223,13 @@ function StaffPage() {
 
   return <section dir={ar ? "rtl" : "ltr"} className="grid gap-5">
     <div className="flex items-start justify-between gap-4">
-      <PageHeading eyebrow={isAdmin ? text.admin : text.barber} title={isAdmin ? text.admin : text.barber} subtitle={user.email ?? ""} />
+      <PageHeading eyebrow={isAdmin ? adminLabel : text.barber} title={isAdmin ? adminLabel : text.barber} subtitle={user.email ?? ""} />
       <button className="shrink-0 rounded-lg border border-border px-3 py-2 text-sm" onClick={() => void supabase.auth.signOut()}>{text.logout}</button>
     </div>
     {!role ? <p role="alert">{text.access}</p> : <>
       {isAdmin ? AdminPanel() : null}
+      {isAdmin ? <AdminDeletionPanel shops={shops} barbers={barbers} busy={busy} isArabic={ar} onDeleteShop={(shop) => { if (window.confirm(ar ? `حذف ${shop.name_en}؟ لا يمكن حذف محل لديه حجوزات.` : `Delete ${shop.name_en}? Shops with bookings cannot be deleted.`)) void submit("delete-shop", { shop_id: shop.id }); }} onDeleteBarber={(barber) => { if (window.confirm(ar ? `حذف ${barber.name_en}؟ لا يمكن حذف حلاق لديه حجوزات.` : `Delete ${barber.name_en}? Barbers with bookings cannot be deleted.`)) void submit("delete-barber", { barber_id: barber.id }); }} /> : null}
+      {isAdmin ? <AdminBarberEditor shops={shops} barbers={barbers} busy={busy} isArabic={ar} onSave={(barber) => { const current = barbers.find((item) => item.id === barber.id); if (current?.shop_id !== barber.shop_id && !window.confirm(ar ? "سيؤدي نقل الحلاق إلى إزالة تعيينات خدماته. لا يمكن نقل حلاق لديه حجوزات." : "Moving this barber clears their service assignments. Barbers with bookings cannot be moved.")) return; void submit("save-barber", { barber }); }} /> : null}
       {isAdmin ? <div className={section}><h2 className="font-semibold">{text.manageBarbers}</h2>{barbers.map((barber) => <div key={barber.id} className="flex items-center justify-between gap-3 border-b border-border py-2 text-sm"><span>{barber.name_en} / {barber.name_ar} · {barber.is_active ? text.active : text.deactivated}</span><button type="button" disabled={busy} onClick={() => void submit("set-barber-active", { barber_id: barber.id, is_active: !barber.is_active })} className="rounded border px-3 py-1">{barber.is_active ? text.deactivated : text.active}</button></div>)}</div> : null}
       {isAdmin && barbers.length ? <div className={section}><h2 className="font-semibold">{text.hours} · {text.barber}</h2><Select value={selectedBarber} onChange={(id) => void chooseBarber(id)}><option value="">{text.select}</option>{barbers.map((b) => <option key={b.id} value={b.id}>{b.name_en} / {b.name_ar}</option>)}</Select>{staffBarber ? SchedulePanel() : null}</div> : null}
       {!isAdmin && myBarber ? SchedulePanel() : null}
@@ -210,7 +237,7 @@ function StaffPage() {
       <div className={section}><h2 className="font-display text-xl font-semibold">{isAdmin ? text.bookings : text.today}</h2>{bookingRows.length === 0 ? <p className="text-sm text-muted-foreground">{text.noBookings}</p> : <ul className="grid gap-3">{bookingRows.map((booking) => {
         const barber = barbers.find((b) => b.id === booking.barber_id);
         const service = services.find((s) => s.id === booking.service_id);
-        return <li key={booking.id} className="grid gap-2 rounded-xl border border-border p-3 sm:grid-cols-[1fr_auto] sm:items-center"><div><p className="font-semibold">{booking.customer_name} · {displayDate(booking.starts_at)}</p><p className="text-sm text-muted-foreground">{booking.customer_mobile} · {text.shop}: {shops.find((s) => s.id === booking.shop_id)?.name_en} · {text.service}: {service?.name_en} · {barber?.name_en} · {booking.building}/{booking.apartment}</p><p className="text-xs">{text.status}: {booking.status}</p></div><div className="flex flex-wrap gap-2">{(isAdmin || booking.barber_id === myBarber?.id) && booking.status === "confirmed" ? <><button className="rounded-md border px-2 py-1 text-xs" onClick={() => void changeStatus(booking.id, "completed")}>{text.completed}</button><button className="rounded-md border px-2 py-1 text-xs" onClick={() => void changeStatus(booking.id, "no_show")}>{text.noShow}</button><button className="rounded-md border px-2 py-1 text-xs" onClick={() => void changeStatus(booking.id, "cancelled")}>{text.cancelled}</button></> : null}</div></li>;
+        return <li key={booking.id} className="grid gap-2 rounded-xl border border-border p-3 sm:grid-cols-[1fr_auto] sm:items-center"><div><p className="font-semibold">{booking.customer_name} · {displayDate(booking.starts_at)}</p><p className="text-sm text-muted-foreground">{booking.customer_mobile} · {text.shop}: {shops.find((s) => s.id === booking.shop_id)?.name_en} · {text.service}: {service?.name_en} · {barber?.name_en} · {booking.building}/{booking.apartment}</p><p className="text-xs">{text.status}: {booking.status}</p></div><div className="flex flex-wrap gap-2">{(isAdmin || booking.barber_id === myBarber?.id) && booking.status === "confirmed" ? <><button className="rounded-md border px-2 py-1 text-xs" onClick={() => void changeStatus(booking.id, "completed")}>{text.completed}</button>{isAdmin ? <button className="rounded-md border px-2 py-1 text-xs" onClick={() => void changeStatus(booking.id, "no_show")}>{text.noShow}</button> : null}<button className="rounded-md border px-2 py-1 text-xs" onClick={() => void changeStatus(booking.id, "cancelled")}>{text.cancelled}</button></> : null}</div></li>;
       })}</ul>}</div>
     </>}
     {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}{notice ? <p role="status" className="text-sm text-primary">{notice}</p> : null}
@@ -222,7 +249,7 @@ function StaffPage() {
     return <div className={section}>
       <h2 className="font-semibold">{text.hours}</h2>
       <form key={scheduleKey} onSubmit={saveHours} className="grid gap-2">{weekdays.map((day, weekday) => { const existing = currentHours.find((h) => h.weekday === weekday); return <div key={weekday} className="grid grid-cols-1 items-end gap-2 rounded-lg border border-border p-2 text-xs sm:grid-cols-[minmax(7rem,1fr)_minmax(0,1fr)_minmax(0,1fr)]"><label className="flex items-center gap-2"><input name={`${weekday}_enabled`} type="checkbox" defaultChecked={Boolean(existing)}/><span>{day}</span></label><label>{text.open}<input name={`${weekday}_open`} type="time" defaultValue={existing?.open_time.slice(0, 5) ?? ""} className={inputClass}/></label><label>{text.close}<input name={`${weekday}_close`} type="time" defaultValue={existing?.close_time.slice(0, 5) ?? ""} className={inputClass}/></label></div>; })}<button disabled={busy || !staffBarber} className={buttonClass}>{text.save}</button></form>
-      <div className="grid gap-3 border-t border-border pt-4"><h3 className="font-semibold">{text.breaks}</h3><form onSubmit={saveBreak} className="grid gap-2 sm:grid-cols-3"><Select value={breakForm.weekday} onChange={(v) => setBreakForm({ ...breakForm, weekday: v })}><option value="0">{weekdays[0]}</option>{weekdays.slice(1).map((d, i) => <option key={d} value={i + 1}>{d}</option>)}</Select><input name="start_time" type="time" value={breakForm.start_time} onChange={(e) => setBreakForm({ ...breakForm, start_time: e.target.value })} className={inputClass}/><input name="end_time" type="time" value={breakForm.end_time} onChange={(e) => setBreakForm({ ...breakForm, end_time: e.target.value })} className={inputClass}/><button disabled={busy || !staffBarber} className={buttonClass}>{text.saveBreak}</button></form><ul className="grid gap-2 text-sm text-muted-foreground">{breaks.filter((b) => b.barber_id === allBarberIds).map((b) => <li key={b.id} className="flex items-center justify-between gap-3"><span>{weekdays[b.weekday]} · {b.start_time.slice(0, 5)}–{b.end_time.slice(0, 5)}</span><button type="button" disabled={busy} onClick={() => removeBreak(b.id)} className="text-destructive">×</button></li>)}</ul></div>
+      <div className="grid gap-3 border-t border-border pt-4"><h3 className="font-semibold">{text.breaks}</h3><form onSubmit={saveBreak} className="grid gap-2 sm:grid-cols-3"><Select value={breakForm.weekday} onChange={(v) => setBreakForm({ ...breakForm, weekday: v })}><option value="0">{weekdays[0]}</option>{weekdays.slice(1).map((d, i) => <option key={d} value={i + 1}>{d}</option>)}</Select><input name="start_time" type="time" value={breakForm.start_time} onChange={(e) => setBreakForm({ ...breakForm, start_time: e.target.value })} className={inputClass}/><input name="end_time" type="time" value={breakForm.end_time} onChange={(e) => setBreakForm({ ...breakForm, end_time: e.target.value })} className={inputClass}/><button disabled={busy || !staffBarber} className={buttonClass}>{breakForm.id ? text.update : text.saveBreak}</button></form><ul className="grid gap-2 text-sm text-muted-foreground">{breaks.filter((b) => b.barber_id === allBarberIds).map((b) => <li key={b.id} className="flex items-center justify-between gap-3"><span>{weekdays[b.weekday]} · {b.start_time.slice(0, 5)}–{b.end_time.slice(0, 5)}</span><span className="flex gap-3"><button type="button" disabled={busy} onClick={() => setBreakForm({ id: b.id, weekday: String(b.weekday), start_time: b.start_time.slice(0, 5), end_time: b.end_time.slice(0, 5) })}>{text.edit}</button><button type="button" disabled={busy} onClick={() => removeBreak(b.id)} className="text-destructive">×</button></span></li>)}</ul></div>
       <div className="grid gap-3 border-t border-border pt-4"><h3 className="font-semibold">{text.holidays}</h3><form onSubmit={(event) => { event.preventDefault(); void submit("save-holiday", { barber_id: allBarberIds, date: holidayForm.date, reason: holidayForm.reason }); }} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]"><input required type="date" min={today} value={holidayForm.date} onChange={(e) => setHolidayForm({ ...holidayForm, date: e.target.value })} className={inputClass}/><input placeholder={text.reason} value={holidayForm.reason} onChange={(e) => setHolidayForm({ ...holidayForm, reason: e.target.value })} className={inputClass}/><button disabled={busy || !staffBarber} className={buttonClass}>{text.addHoliday}</button></form><ul className="grid gap-2 text-sm">{holidays.filter((h) => h.barber_id === allBarberIds).map((h) => <li key={h.id} className="flex justify-between rounded-lg border p-2">{h.date} {h.reason}<button onClick={() => void submit("delete-holiday", { barber_id: allBarberIds, holiday_id: h.id })} className="text-destructive">×</button></li>)}</ul></div>
       {isAdmin ? <div className="grid gap-3 border-t border-border pt-4"><h3 className="font-semibold">{text.serviceAssignments}</h3><div className="grid gap-2">{services.filter((s) => s.shop_id === staffBarber?.shop_id).map((s) => <label key={s.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={barberServiceIds.includes(s.id)} onChange={(e) => setBarberServiceIds((prev) => e.target.checked ? [...prev, s.id] : prev.filter((id) => id !== s.id))}/>{s.name_en} / {s.name_ar}</label>)}</div><button disabled={busy} onClick={() => void submit("assign-services", { barber_id: allBarberIds, service_ids: barberServiceIds })} className={buttonClass}>{text.assign}</button></div> : null}
     </div>;

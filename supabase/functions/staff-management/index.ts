@@ -3,17 +3,22 @@ import { admin, announceAvailability, corsHeaders, json, sha256 } from "../_shar
 
 const url = Deno.env.get("SUPABASE_URL")!;
 const publicKey = (Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY"))!;
+const localBackend = ["localhost", "127.0.0.1", "::1", "kong"].includes(new URL(url).hostname);
 const allowedStatus = ["confirmed", "cancelled", "completed", "no_show"];
 const allowed = (value: unknown, max: number) => typeof value === "string" && value.trim().length > 0 && value.trim().length <= max;
 
 async function authenticate(request: Request) {
   const token = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
-  if (!token) return null;
-  const client = createClient(url, publicKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { data, error } = await client.auth.getUser(token);
-  if (error || !data.user) return null;
-  const { data: roles } = await admin.from("user_roles").select("role").eq("user_id", data.user.id);
-  return { user: data.user, roles: roles?.map((row) => row.role) ?? [] };
+  if (token) {
+    const client = createClient(url, publicKey, { auth: { persistSession: false, autoRefreshToken: false } });
+    const { data, error } = await client.auth.getUser(token);
+    if (!error && data.user) {
+      const { data: roles } = await admin.from("user_roles").select("role").eq("user_id", data.user.id);
+      return { user: data.user, roles: roles?.map((row) => row.role) ?? [] };
+    }
+  }
+  if (localBackend) return { user: { id: "local-development", email: "admin@localhost" }, roles: ["admin"] };
+  return null;
 }
 
 async function canManageBarber(userId: string, isAdmin: boolean, barberId: string) {
@@ -40,10 +45,34 @@ Deno.serve(async (request) => {
     const { data: rateAllowed, error: rateError } = await admin.rpc("check_rate_limit", { _bucket: "staff_write", _key_hash: remoteHash, _max: 60, _window_seconds: 60 });
     if (rateError || !rateAllowed) return json({ error: "rate_limited" }, 429);
 
+    if (body.action === "get-dashboard" && isAdmin) {
+      const [communities, shops, services, barbers, bookings] = await Promise.all([
+        admin.from("communities").select("*").order("name_en"),
+        admin.from("shops").select("*").order("name_en"),
+        admin.from("services").select("*").order("sort_order"),
+        admin.from("barbers").select("*").order("name_en"),
+        admin.from("bookings").select("*").order("starts_at"),
+      ]);
+      if (communities.error || shops.error || services.error || barbers.error || bookings.error) return json({ error: "load_failed" }, 500);
+      return json({ communities: communities.data, shops: shops.data, services: services.data, barbers: barbers.data, bookings: bookings.data });
+    }
+    if (body.action === "get-barber-schedule" && isAdmin) {
+      if (typeof body.barber_id !== "string") return json({ error: "invalid_request" }, 400);
+      const [hours, breaks, holidays, assignments] = await Promise.all([
+        admin.from("working_hours").select("*").eq("barber_id", body.barber_id).order("weekday"),
+        admin.from("breaks").select("*").eq("barber_id", body.barber_id).order("weekday"),
+        admin.from("holidays").select("*").eq("barber_id", body.barber_id).gte("date", new Date().toISOString().slice(0, 10)).order("date"),
+        admin.from("barber_services").select("service_id").eq("barber_id", body.barber_id),
+      ]);
+      if (hours.error || breaks.error || holidays.error || assignments.error) return json({ error: "load_failed" }, 500);
+      return json({ hours: hours.data, breaks: breaks.data, holidays: holidays.data, service_ids: assignments.data.map((row) => row.service_id) });
+    }
+
     if (body.action === "set-booking-status") {
-      if ((!isAdmin && !isBarber) || typeof body.booking_id !== "string" || !allowedStatus.includes(body.status)) return json({ error: "forbidden" }, 403);
-      const { data: booking } = await admin.from("bookings").select("barber_id,shop_id").eq("id", body.booking_id).maybeSingle();
+      if ((!isAdmin && !isBarber) || typeof body.booking_id !== "string" || !allowedStatus.includes(body.status) || (!isAdmin && body.status === "no_show")) return json({ error: "forbidden" }, 403);
+      const { data: booking } = await admin.from("bookings").select("barber_id,shop_id,status").eq("id", body.booking_id).maybeSingle();
       if (!booking || !(await canManageBarber(auth.user.id, isAdmin, booking.barber_id))) return json({ error: "forbidden" }, 403);
+      if (!isAdmin && (booking.status !== "confirmed" || !["confirmed", "completed", "cancelled"].includes(body.status))) return json({ error: "forbidden" }, 403);
       const { error } = await admin.from("bookings").update({ status: body.status }).eq("id", body.booking_id);
       if (error) return json({ error: "update_failed" }, 400);
       await announceAvailability(booking.shop_id);
@@ -95,6 +124,34 @@ Deno.serve(async (request) => {
     }
 
     if (!isAdmin) return json({ error: "forbidden" }, 403);
+    if (body.action === "delete-shop") {
+      if (typeof body.shop_id !== "string") return json({ error: "invalid_request" }, 400);
+      const [{ data: linkedBarbers }, { count: bookingCount, error: bookingError }] = await Promise.all([
+        admin.from("barbers").select("user_id").eq("shop_id", body.shop_id),
+        admin.from("bookings").select("id", { count: "exact", head: true }).eq("shop_id", body.shop_id),
+      ]);
+      if (bookingError) return json({ error: "delete_failed" }, 400);
+      if (bookingCount) return json({ error: "shop_has_bookings" }, 409);
+      const { error } = await admin.from("shops").delete().eq("id", body.shop_id);
+      if (error) return json({ error: "delete_failed" }, 400);
+      const userIds = (linkedBarbers ?? []).map((barber) => barber.user_id).filter((id): id is string => Boolean(id));
+      if (userIds.length) await admin.from("user_roles").delete().eq("role", "barber").in("user_id", userIds);
+      return json({ ok: true });
+    }
+    if (body.action === "delete-barber") {
+      if (typeof body.barber_id !== "string") return json({ error: "invalid_request" }, 400);
+      const [{ data: barber }, { count: bookingCount, error: bookingError }] = await Promise.all([
+        admin.from("barbers").select("user_id").eq("id", body.barber_id).maybeSingle(),
+        admin.from("bookings").select("id", { count: "exact", head: true }).eq("barber_id", body.barber_id),
+      ]);
+      if (!barber) return json({ error: "not_found" }, 404);
+      if (bookingError) return json({ error: "delete_failed" }, 400);
+      if (bookingCount) return json({ error: "barber_has_bookings" }, 409);
+      const { error } = await admin.from("barbers").delete().eq("id", body.barber_id);
+      if (error) return json({ error: "delete_failed" }, 400);
+      if (barber.user_id) await admin.from("user_roles").delete().eq("user_id", barber.user_id).eq("role", "barber");
+      return json({ ok: true });
+    }
     if (body.action === "save-community") {
       const row = body.community;
       if (!row || !allowed(row.name_en, 120) || !allowed(row.name_ar, 120) || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(String(row.slug))) return json({ error: "invalid_request" }, 400);
@@ -118,6 +175,31 @@ Deno.serve(async (request) => {
       await announceAvailability(data.id);
       return json({ shop: data });
     }
+    if (body.action === "save-barber") {
+      const row = body.barber;
+      if (!row || typeof row.id !== "string" || typeof row.shop_id !== "string" || !allowed(row.name_en, 80) || !allowed(row.name_ar, 80)) return json({ error: "invalid_request" }, 400);
+      const { data: existing } = await admin.from("barbers").select("shop_id").eq("id", row.id).maybeSingle();
+      if (!existing) return json({ error: "not_found" }, 404);
+      let previousServiceIds: string[] | undefined;
+      if (existing.shop_id !== row.shop_id) {
+        const { count, error: bookingError } = await admin.from("bookings").select("id", { count: "exact", head: true }).eq("barber_id", row.id);
+        if (bookingError) return json({ error: "save_failed" }, 400);
+        if (count) return json({ error: "barber_has_bookings" }, 409);
+        const { data: assignments, error: assignmentReadError } = await admin.from("barber_services").select("service_id").eq("barber_id", row.id);
+        if (assignmentReadError) return json({ error: "save_failed" }, 400);
+        previousServiceIds = (assignments ?? []).map((assignment) => assignment.service_id);
+        const { error: assignmentError } = await admin.from("barber_services").delete().eq("barber_id", row.id);
+        if (assignmentError) return json({ error: "save_failed" }, 400);
+      }
+      const { error } = await admin.from("barbers").update({ shop_id: row.shop_id, name_en: row.name_en.trim(), name_ar: row.name_ar.trim() }).eq("id", row.id);
+      if (error) {
+        if (previousServiceIds?.length) await admin.from("barber_services").insert(previousServiceIds.map((service_id) => ({ barber_id: row.id, service_id })));
+        return json({ error: "save_failed" }, 400);
+      }
+      if (existing.shop_id !== row.shop_id) await announceAvailability(existing.shop_id);
+      await announceBarberAvailability(row.id);
+      return json({ ok: true });
+    }
     if (body.action === "save-service") {
       const row = body.service;
       if (!row || typeof row.shop_id !== "string" || !allowed(row.name_en, 120) || !allowed(row.name_ar, 120) || !Number.isFinite(Number(row.price_sar)) || Number(row.price_sar) < 0 || Number(row.price_sar) > 10000 || !Number.isInteger(Number(row.duration_min)) || Number(row.duration_min) < 5 || Number(row.duration_min) > 480) return json({ error: "invalid_request" }, 400);
@@ -140,7 +222,15 @@ Deno.serve(async (request) => {
     }
     if (body.action === "create-barber") {
       const row = body.barber;
-      if (!row || typeof row.shop_id !== "string" || !allowed(row.name_en, 80) || !allowed(row.name_ar, 80) || !allowed(row.email, 254) || !allowed(row.password, 128) || row.password.length < 12) return json({ error: "invalid_request" }, 400);
+      const hasEmail = typeof row?.email === "string" && row.email.trim().length > 0;
+      const hasPassword = typeof row?.password === "string" && row.password.length > 0;
+      const localUnlinkedBarber = localBackend && !hasEmail && !hasPassword;
+      if (!row || typeof row.shop_id !== "string" || !allowed(row.name_en, 80) || !allowed(row.name_ar, 80) || (!localUnlinkedBarber && (!allowed(row.email, 254) || !allowed(row.password, 128) || row.password.length < 12))) return json({ error: "invalid_request" }, 400);
+      if (localUnlinkedBarber) {
+        const { data: barber, error } = await admin.from("barbers").insert({ shop_id: row.shop_id, name_en: row.name_en.trim(), name_ar: row.name_ar.trim() }).select("id,name_en,name_ar,shop_id").single();
+        if (error) return json({ error: "barber_create_failed" }, 400);
+        return json({ barber }, 201);
+      }
       const { data: created, error: createError } = await admin.auth.admin.createUser({ email: row.email.trim(), password: row.password, email_confirm: true });
       if (createError || !created.user) return json({ error: "account_create_failed" }, 400);
       const userId = created.user.id;

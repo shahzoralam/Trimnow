@@ -350,7 +350,7 @@ function AvailabilitySection({
     }).format(new Date(iso));
 
   const chip = (active: boolean) =>
-    `shrink-0 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+    `max-w-full shrink-0 whitespace-normal break-words rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
       active
         ? "border-primary bg-primary text-primary-foreground"
         : "border-border bg-card hover:bg-secondary"
@@ -373,17 +373,17 @@ function AvailabilitySection({
   };
 
   return (
-    <div>
-      <h2 className="mb-1 flex items-center gap-2 font-display text-xl font-semibold">
+    <div className="min-w-0 max-w-full break-words">
+      <h2 className="mb-1 flex min-w-0 items-center gap-2 font-display text-xl font-semibold">
         <CalendarDays className="size-5 text-primary" aria-hidden />
         {c.title}
       </h2>
       <p className="mb-4 text-sm text-muted-foreground">{c.hint}</p>
 
-      <div className="grid gap-4 rounded-2xl border border-border bg-card p-4">
-        <fieldset>
+      <div className="grid min-w-0 max-w-full gap-4 rounded-2xl border border-border bg-card p-4">
+        <fieldset className="min-w-0">
           <legend className="mb-2 text-sm font-semibold">{c.service}</legend>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex min-w-0 max-w-full flex-wrap gap-2">
             {services.map((s) => (
               <button
                 key={s.id}
@@ -398,9 +398,9 @@ function AvailabilitySection({
           </div>
         </fieldset>
 
-        <fieldset>
+        <fieldset className="min-w-0">
           <legend className="mb-2 text-sm font-semibold">{c.barber}</legend>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex min-w-0 max-w-full flex-wrap gap-2">
             <button
               type="button"
               aria-pressed={barberId === null}
@@ -423,9 +423,9 @@ function AvailabilitySection({
           </div>
         </fieldset>
 
-        <fieldset>
+        <fieldset className="min-w-0 max-w-full">
           <legend className="mb-2 text-sm font-semibold">{c.day}</legend>
-          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+          <div className="-mx-1 flex min-w-0 max-w-full gap-2 overflow-x-auto px-1 pb-1">
             {dates.map((d) => (
               <button
                 key={d}
@@ -440,7 +440,7 @@ function AvailabilitySection({
           </div>
         </fieldset>
 
-        <div aria-live="polite">
+        <div className="min-w-0 max-w-full" aria-live="polite">
           <p className="mb-2 text-xs text-muted-foreground">{c.times}</p>
           {!enabled || (isFetching && !data) ? (
             <p className="text-sm text-muted-foreground">{c.loading}</p>
@@ -451,7 +451,7 @@ function AvailabilitySection({
           ) : data && data.slots.length === 0 ? (
             <p className="text-sm text-muted-foreground">{c.none}</p>
           ) : (
-            <ul className={`flex flex-wrap gap-2 ${isFetching ? "opacity-60" : ""}`}>
+            <ul className={`flex min-w-0 max-w-full flex-wrap gap-2 ${isFetching ? "opacity-60" : ""}`}>
               {data?.slots.map((s) => (
                 <li key={s.starts_at}>
                   <button type="button" aria-pressed={selectedSlot === s.starts_at} onClick={() => setSelectedSlot(s.starts_at)} className={chip(selectedSlot === s.starts_at)}>

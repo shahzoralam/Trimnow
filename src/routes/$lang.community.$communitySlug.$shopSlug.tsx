@@ -278,7 +278,7 @@ function AvailabilitySection({
   useEffect(() => {
     const list = riyadhDates(Math.max(1, Math.min(windowDays, 90)));
     setDates(list);
-    setDate((d) => d || list[0]);
+    setDate((d) => d || list[0] || "");
   }, [windowDays]);
 
   const eligible = useMemo(

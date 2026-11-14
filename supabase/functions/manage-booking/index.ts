@@ -1,4 +1,4 @@
-import { admin, corsHeaders, json, openSlots, randomToken, sha256 } from "../_shared/scheduling.ts";
+import { admin, announceAvailability, corsHeaders, json, openSlots, randomToken, sha256 } from "../_shared/scheduling.ts";
 
 const mobilePattern = /^05[0-9]{8}$/;
 const text = (v: unknown, max: number) => typeof v === "string" && v.trim().length > 0 && v.trim().length <= max;
@@ -49,6 +49,7 @@ Deno.serve(async (request) => {
         manage_token_hash: tokenHash,
       }).select("id,starts_at,ends_at,price_sar,duration_min,status,shop_id,barber_id,service_id").single();
       if (error) return json({ error: error.code === "23P01" ? "slot_unavailable" : "booking_failed" }, error.code === "23P01" ? 409 : 400);
+      await announceAvailability(shop_id);
       return json({ booking, manage_token: token }, 201);
     }
 
@@ -63,6 +64,7 @@ Deno.serve(async (request) => {
       if (body.action === "cancel") {
         const { error } = await admin.from("bookings").update({ status: "cancelled" }).eq("id", booking.id);
         if (error) return json({ error: "booking_failed" }, 400);
+        await announceAvailability(booking.shop_id);
         return json({ ok: true });
       }
       if (typeof body.starts_at !== "string") return json({ error: "invalid_request" }, 400);
@@ -79,6 +81,7 @@ Deno.serve(async (request) => {
       if (!chosen) return json({ error: "slot_unavailable" }, 409);
       const { data: updated, error } = await admin.from("bookings").update({ starts_at: chosen.slot.starts_at, ends_at: chosen.slot.ends_at, barber_id: chosen.id }).eq("id", booking.id).select("id,starts_at,ends_at,status").single();
       if (error) return json({ error: error.code === "23P01" ? "slot_unavailable" : "booking_failed" }, 409);
+      await announceAvailability(booking.shop_id);
       return json({ booking: updated });
     }
     return json({ error: "invalid_action" }, 400);

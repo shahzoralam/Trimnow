@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Languages, Scissors } from "lucide-react";
+import { Languages, Scissors, UserRound } from "lucide-react";
 
 import { LANG_STORAGE_KEY, otherLang, t } from "@/lib/i18n";
 import { useLang } from "./use-lang";
@@ -20,6 +20,14 @@ export function SiteHeader() {
             <span className="font-display text-lg font-semibold tracking-tight">TrimTime</span>
             <span className="text-xs text-muted-foreground">{copy.tagline}</span>
           </span>
+        </Link>
+        <Link
+          to="/$lang/staff"
+          params={{ lang }}
+          className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-card px-3.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
+        >
+          <UserRound className="size-4" aria-hidden />
+          {lang === "ar" ? "الفريق" : "Staff"}
         </Link>
         <Link
           to="."

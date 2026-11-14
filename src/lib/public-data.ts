@@ -172,7 +172,9 @@ export const availabilityQuery = (params: {
 }) =>
   queryOptions({
     queryKey: ["public", "availability", params.shopId, params.serviceId, params.date, params.barberId],
-    staleTime: 30_000,
+    staleTime: 5_000,
+    refetchOnWindowFocus: true,
+    refetchInterval: 15_000,
     queryFn: async (): Promise<AvailabilityResult> => {
       const { data, error } = await supabase.functions.invoke("check-availability", {
         body: {

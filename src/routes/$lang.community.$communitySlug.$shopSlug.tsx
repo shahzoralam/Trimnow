@@ -1,4 +1,4 @@
-import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, createFileRoute, notFound } from "@tanstack/react-router";
 import { CalendarDays, Clock, MapPin, Phone, Scissors, Shuffle, UserRound } from "lucide-react";
@@ -293,6 +293,7 @@ function AvailabilitySection({
 }) {
   const c = AVAIL_COPY[lang];
   const locale = lang === "ar" ? "ar-SA" : "en-GB";
+  const queryClient = useQueryClient();
   const [serviceId, setServiceId] = useState<string>(services[0]?.id ?? "");
   const [barberId, setBarberId] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
@@ -322,6 +323,15 @@ function AvailabilitySection({
     ...availabilityQuery({ shopId, serviceId, date, barberId }),
     enabled,
   });
+  useEffect(() => {
+    const channel = supabase
+      .channel(`availability:${shopId}`, { config: { private: false } })
+      .on("broadcast", { event: "availability-changed" }, () => {
+        void queryClient.invalidateQueries({ queryKey: ["public", "availability", shopId] });
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [queryClient, shopId]);
 
   if (services.length === 0 || barbers.length === 0) return null;
 
@@ -379,7 +389,7 @@ function AvailabilitySection({
                 key={s.id}
                 type="button"
                 aria-pressed={serviceId === s.id}
-                onClick={() => setServiceId(s.id)}
+                onClick={() => { setServiceId(s.id); setSelectedSlot(null); }}
                 className={chip(serviceId === s.id)}
               >
                 {pickLocalized(s, "name", lang)}
@@ -394,7 +404,7 @@ function AvailabilitySection({
             <button
               type="button"
               aria-pressed={barberId === null}
-              onClick={() => setBarberId(null)}
+              onClick={() => { setBarberId(null); setSelectedSlot(null); }}
               className={chip(barberId === null)}
             >
               {c.any}
@@ -404,7 +414,7 @@ function AvailabilitySection({
                 key={b.id}
                 type="button"
                 aria-pressed={barberId === b.id}
-                onClick={() => setBarberId(b.id)}
+                onClick={() => { setBarberId(b.id); setSelectedSlot(null); }}
                 className={chip(barberId === b.id)}
               >
                 {pickLocalized(b, "name", lang)}
@@ -421,7 +431,7 @@ function AvailabilitySection({
                 key={d}
                 type="button"
                 aria-pressed={date === d}
-                onClick={() => setDate(d)}
+                onClick={() => { setDate(d); setSelectedSlot(null); }}
                 className={chip(date === d)}
               >
                 {dayLabel(d)}

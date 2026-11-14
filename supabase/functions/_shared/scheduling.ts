@@ -20,10 +20,12 @@ export function riyadhInstant(date: string, time: string) {
 
 export async function openSlots(shopId: string, serviceId: string, date: string, barberId?: string | null) {
   const [{ data: shop }, { data: service }] = await Promise.all([
-    admin.from("shops").select("id,slot_interval_min,min_lead_time_min,booking_window_days,is_active").eq("id", shopId).eq("is_active", true).single(),
+    admin.from("shops").select("id,community_id,slot_interval_min,min_lead_time_min,booking_window_days,is_active").eq("id", shopId).eq("is_active", true).single(),
     admin.from("services").select("id,duration_min").eq("id", serviceId).eq("shop_id", shopId).eq("is_active", true).single(),
   ]);
   if (!shop || !service || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return [];
+  const { data: community } = await admin.from("communities").select("is_active").eq("id", shop.community_id).single();
+  if (!community?.is_active) return [];
   const dayStart = new Date(`${date}T00:00:00Z`);
   if (Number.isNaN(dayStart.getTime()) || dayStart.toISOString().slice(0, 10) !== date) return [];
   const todayRiyadh = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -84,4 +86,10 @@ export async function sha256(value: string) {
 export function randomToken() {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+export async function announceAvailability(shopId: string) {
+  const channel = admin.channel(`availability:${shopId}`, { config: { private: false } });
+  await channel.send({ type: "broadcast", event: "availability-changed", payload: { shop_id: shopId } }).catch(() => undefined);
+  await admin.removeChannel(channel).catch(() => undefined);
 }

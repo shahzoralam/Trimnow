@@ -1,20 +1,20 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { Building2, ChevronRight } from "lucide-react";
+import { ChevronRight, Store } from "lucide-react";
 
 import { EmptyState, PageHeading, RouteErrorView, RouteNotFoundView } from "@/components/public/blocks";
 import { useLang } from "@/components/public/use-lang";
 import { isLang, pickLocalized, t } from "@/lib/i18n";
-import { communitiesQuery } from "@/lib/public-data";
+import { alIskanShopsQuery } from "@/lib/public-data";
 
 export const Route = createFileRoute("/$lang/")({
-  loader: ({ context }) => context.queryClient.ensureQueryData(communitiesQuery()),
+  loader: ({ context }) => context.queryClient.ensureQueryData(alIskanShopsQuery()),
   head: ({ params }) => {
     const ar = isLang(params.lang) && params.lang === "ar";
-    const title = ar ? "تريم تايم — اختر مجمّعك السكني" : "TrimTime — Choose your community";
+    const title = ar ? "تريم تايم — مجمع الإسكان السكني المسوّر" : "TrimTime — Al Iskan Gated Community";
     const description = ar
-      ? "احجز موعد الحلاقة مع حلاقي مجمّعك السكني في الدمام."
-      : "Pick your gated community in Dammam and book a haircut with its barbers.";
+      ? "اختر محل الحلاقة واحجز موعدك في مجمع الإسكان."
+      : "Choose your barber shop and book your appointment in Al Iskan.";
     return {
       meta: [
         { title },
@@ -34,33 +34,30 @@ export const Route = createFileRoute("/$lang/")({
 function HomePage() {
   const lang = useLang();
   const copy = t(lang);
-  const { data: communities } = useSuspenseQuery(communitiesQuery());
+  const { data: shops } = useSuspenseQuery(alIskanShopsQuery());
 
   return (
     <section>
-      <PageHeading eyebrow={copy.homeEyebrow} title={copy.homeTitle} subtitle={copy.homeSubtitle} />
-      {communities.length === 0 ? (
-        <EmptyState icon={Building2} title={copy.noCommunities} hint={copy.noCommunitiesHint} />
+      <PageHeading title={copy.homeTitle} subtitle={copy.homeSubtitle} />
+      {shops.length === 0 ? (
+        <EmptyState icon={Store} title={copy.noShops} hint={copy.noShopsHint} />
       ) : (
-        <ul className="grid gap-3">
-          {communities.map((c) => (
-            <li key={c.id}>
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {shops.map((shop) => (
+            <li key={shop.id}>
               <Link
-                to="/$lang/community/$communitySlug"
-                params={{ lang, communitySlug: c.slug }}
-                className="group flex items-center gap-4 rounded-2xl border border-border bg-card p-4 shadow-soft transition hover:-translate-y-0.5 hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                to="/$lang/community/$communitySlug/$shopSlug"
+                params={{ lang, communitySlug: shop.community_slug, shopSlug: shop.slug }}
+                className="group flex min-h-24 items-center gap-4 rounded-2xl border border-border bg-card p-4 shadow-soft transition hover:-translate-y-0.5 hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-secondary text-primary">
-                  <Building2 className="size-5" aria-hidden />
+                <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
+                  <Store className="size-5" aria-hidden />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-lg font-semibold">{pickLocalized(c, "name", lang)}</span>
-                  <span className="block text-sm text-muted-foreground">{copy.shopsCount(c.shopCount)}</span>
+                  <span className="block text-lg font-semibold">{pickLocalized(shop, "name", lang)}</span>
+                  {shop.location_note ? <span className="mt-1 block text-sm text-muted-foreground">{shop.location_note}</span> : null}
                 </span>
-                <ChevronRight
-                  className="size-5 text-muted-foreground transition group-hover:text-primary rtl:rotate-180"
-                  aria-hidden
-                />
+                <ChevronRight className="size-5 shrink-0 text-muted-foreground transition group-hover:text-primary rtl:rotate-180" aria-hidden />
               </Link>
             </li>
           ))}

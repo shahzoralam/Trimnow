@@ -5,14 +5,6 @@ import { supabase } from "@/integrations/supabase/client";
 // Public catalogue reads go straight to the database as the visitor; RLS only returns
 // active communities, shops and services, and barbers come from the public_barbers view.
 
-export type CommunitySummary = {
-  id: string;
-  slug: string;
-  name_en: string;
-  name_ar: string;
-  shopCount: number;
-};
-
 export type ShopSummary = {
   id: string;
   slug: string;
@@ -54,22 +46,33 @@ export type ShopDetail = {
   barbers: PublicBarber[];
 };
 
-export const communitiesQuery = () =>
+const AL_ISKAN_SHOP_NAMES = ["Royal Gents Salon", "Urban Clippers", "Al Noor Barber", "City Gents Salon"];
+
+export type HomeShop = ShopSummary & { community_slug: string };
+
+export const alIskanShopsQuery = () =>
   queryOptions({
-    queryKey: ["public", "communities"],
-    queryFn: async (): Promise<CommunitySummary[]> => {
+    queryKey: ["public", "al-iskan-shops"],
+    queryFn: async (): Promise<HomeShop[]> => {
       const { data, error } = await supabase
-        .from("communities")
-        .select("id, slug, name_en, name_ar, shops(id)")
+        .from("shops")
+        .select("id, slug, name_en, name_ar, description_en, description_ar, location_note, communities!inner(slug)")
         .order("name_en");
       if (error) throw new Error(error.message);
-      return (data ?? []).map((c) => ({
-        id: c.id,
-        slug: c.slug,
-        name_en: c.name_en,
-        name_ar: c.name_ar,
-        shopCount: Array.isArray(c.shops) ? c.shops.length : 0,
+      const shops = (data ?? []).map((shop) => ({
+        id: shop.id,
+        slug: shop.slug,
+        name_en: shop.name_en,
+        name_ar: shop.name_ar,
+        description_en: shop.description_en,
+        description_ar: shop.description_ar,
+        location_note: shop.location_note,
+        community_slug: shop.communities.slug,
       }));
+      return AL_ISKAN_SHOP_NAMES.flatMap((name) => {
+        const shop = shops.find((candidate) => candidate.name_en.trim().toLowerCase() === name.toLowerCase());
+        return shop ? [shop] : [];
+      });
     },
   });
 

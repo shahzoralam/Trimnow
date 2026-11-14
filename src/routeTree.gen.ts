@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LangRouteImport } from './routes/$lang'
 import { Route as LangIndexRouteImport } from './routes/$lang.index'
+import { Route as LangManageBookingRouteImport } from './routes/$lang.manage-booking'
 import { Route as LangCommunityCommunitySlugIndexRouteImport } from './routes/$lang.community.$communitySlug.index'
 import { Route as LangCommunityCommunitySlugShopSlugRouteImport } from './routes/$lang.community.$communitySlug.$shopSlug'
 
@@ -30,6 +31,11 @@ const LangIndexRoute = LangIndexRouteImport.update({
   path: '/',
   getParentRoute: () => LangRoute,
 } as any)
+const LangManageBookingRoute = LangManageBookingRouteImport.update({
+  id: '/manage-booking',
+  path: '/manage-booking',
+  getParentRoute: () => LangRoute,
+} as any)
 const LangCommunityCommunitySlugIndexRoute =
   LangCommunityCommunitySlugIndexRouteImport.update({
     id: '/community/$communitySlug/',
@@ -46,12 +52,14 @@ const LangCommunityCommunitySlugShopSlugRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$lang': typeof LangRouteWithChildren
+  '/$lang/manage-booking': typeof LangManageBookingRoute
   '/$lang/': typeof LangIndexRoute
   '/$lang/community/$communitySlug/$shopSlug': typeof LangCommunityCommunitySlugShopSlugRoute
   '/$lang/community/$communitySlug/': typeof LangCommunityCommunitySlugIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/$lang/manage-booking': typeof LangManageBookingRoute
   '/$lang': typeof LangIndexRoute
   '/$lang/community/$communitySlug/$shopSlug': typeof LangCommunityCommunitySlugShopSlugRoute
   '/$lang/community/$communitySlug': typeof LangCommunityCommunitySlugIndexRoute
@@ -60,6 +68,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/$lang': typeof LangRouteWithChildren
+  '/$lang/manage-booking': typeof LangManageBookingRoute
   '/$lang/': typeof LangIndexRoute
   '/$lang/community/$communitySlug/$shopSlug': typeof LangCommunityCommunitySlugShopSlugRoute
   '/$lang/community/$communitySlug/': typeof LangCommunityCommunitySlugIndexRoute
@@ -69,12 +78,14 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/$lang'
+    | '/$lang/manage-booking'
     | '/$lang/'
     | '/$lang/community/$communitySlug/$shopSlug'
     | '/$lang/community/$communitySlug/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/$lang/manage-booking'
     | '/$lang'
     | '/$lang/community/$communitySlug/$shopSlug'
     | '/$lang/community/$communitySlug'
@@ -82,6 +93,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/$lang'
+    | '/$lang/manage-booking'
     | '/$lang/'
     | '/$lang/community/$communitySlug/$shopSlug'
     | '/$lang/community/$communitySlug/'
@@ -115,6 +127,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LangIndexRouteImport
       parentRoute: typeof LangRoute
     }
+    '/$lang/manage-booking': {
+      id: '/$lang/manage-booking'
+      path: '/manage-booking'
+      fullPath: '/$lang/manage-booking'
+      preLoaderRoute: typeof LangManageBookingRouteImport
+      parentRoute: typeof LangRoute
+    }
     '/$lang/community/$communitySlug/': {
       id: '/$lang/community/$communitySlug/'
       path: '/community/$communitySlug'
@@ -133,12 +152,14 @@ declare module '@tanstack/react-router' {
 }
 
 interface LangRouteChildren {
+  LangManageBookingRoute: typeof LangManageBookingRoute
   LangIndexRoute: typeof LangIndexRoute
   LangCommunityCommunitySlugShopSlugRoute: typeof LangCommunityCommunitySlugShopSlugRoute
   LangCommunityCommunitySlugIndexRoute: typeof LangCommunityCommunitySlugIndexRoute
 }
 
 const LangRouteChildren: LangRouteChildren = {
+  LangManageBookingRoute: LangManageBookingRoute,
   LangIndexRoute: LangIndexRoute,
   LangCommunityCommunitySlugShopSlugRoute:
     LangCommunityCommunitySlugShopSlugRoute,

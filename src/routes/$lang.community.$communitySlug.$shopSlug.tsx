@@ -1,7 +1,8 @@
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, createFileRoute, notFound } from "@tanstack/react-router";
 import { CalendarDays, Clock, MapPin, Phone, Scissors, Shuffle, UserRound } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 import {
   BackIcon,
@@ -229,7 +230,7 @@ function BarbersSection({
 const AVAIL_COPY = {
   en: {
     title: "Available times",
-    hint: "Pick a service, a barber and a day to see free times. Booking comes in the next step.",
+    hint: "Choose a service, barber, date and time, then confirm your booking.",
     service: "Service",
     barber: "Barber",
     day: "Day",
@@ -239,10 +240,21 @@ const AVAIL_COPY = {
     error: "Free times can't be loaded right now. Please try again later.",
     rateLimited: "Too many checks. Please wait a minute and try again.",
     times: "Riyadh time",
+    selectTime: "Select a time",
+    customerName: "Your name",
+    mobile: "Mobile number (05xxxxxxxx)",
+    building: "Building",
+    apartment: "Apartment",
+    confirm: "Confirm booking",
+    creating: "Confirming…",
+    bookingError: "Booking could not be confirmed. The slot may have been taken; please choose again.",
+    confirmed: "Booking confirmed",
+    manage: "Secure cancellation and rescheduling link",
+    bookedAt: "Appointment time",
   },
   ar: {
     title: "المواعيد المتاحة",
-    hint: "اختر الخدمة والحلاق واليوم لعرض المواعيد المتاحة. الحجز في الخطوة التالية.",
+    hint: "اختر الخدمة والحلاق والتاريخ والوقت، ثم أكّد حجزك.",
     service: "الخدمة",
     barber: "الحلاق",
     day: "اليوم",
@@ -252,6 +264,17 @@ const AVAIL_COPY = {
     error: "تعذّر تحميل المواعيد الآن. حاول مرة أخرى لاحقًا.",
     rateLimited: "طلبات كثيرة. انتظر دقيقة ثم حاول مجددًا.",
     times: "بتوقيت الرياض",
+    selectTime: "اختر موعدًا",
+    customerName: "الاسم",
+    mobile: "رقم الجوال (05xxxxxxxx)",
+    building: "رقم المبنى",
+    apartment: "رقم الشقة",
+    confirm: "تأكيد الحجز",
+    creating: "جارٍ تأكيد الحجز…",
+    bookingError: "تعذّر تأكيد الحجز. ربما حُجز الموعد؛ اختر موعدًا آخر.",
+    confirmed: "تم تأكيد الحجز",
+    manage: "رابط آمن للإلغاء أو إعادة الجدولة",
+    bookedAt: "موعد الحجز",
   },
 } as const;
 
@@ -272,6 +295,11 @@ function AvailabilitySection({
   const locale = lang === "ar" ? "ar-SA" : "en-GB";
   const [serviceId, setServiceId] = useState<string>(services[0]?.id ?? "");
   const [barberId, setBarberId] = useState<string | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+  const [customer, setCustomer] = useState({ name: "", mobile: "", building: "", apartment: "" });
+  const [bookingError, setBookingError] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [confirmation, setConfirmation] = useState<{ token: string; startsAt: string } | null>(null);
   // Dates depend on "now"; compute after hydration to avoid SSR mismatch.
   const [dates, setDates] = useState<string[]>([]);
   const [date, setDate] = useState<string>("");
@@ -317,6 +345,22 @@ function AvailabilitySection({
         ? "border-primary bg-primary text-primary-foreground"
         : "border-border bg-card hover:bg-secondary"
     }`;
+
+  const submitBooking = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedSlot || isSubmitting) return;
+    setIsSubmitting(true);
+    setBookingError(false);
+    const { data, error } = await supabase.functions.invoke("manage-booking", {
+      body: { action: "create", shop_id: shopId, service_id: serviceId, barber_id: barberId, starts_at: selectedSlot, customer_name: customer.name, customer_mobile: customer.mobile, building: customer.building, apartment: customer.apartment, language: lang },
+    });
+    setIsSubmitting(false);
+    if (error || !data?.manage_token) {
+      setBookingError(true);
+      return;
+    }
+    setConfirmation({ token: data.manage_token, startsAt: data.booking.starts_at });
+  };
 
   return (
     <div>
@@ -399,16 +443,35 @@ function AvailabilitySection({
           ) : (
             <ul className={`flex flex-wrap gap-2 ${isFetching ? "opacity-60" : ""}`}>
               {data?.slots.map((s) => (
-                <li
-                  key={s.starts_at}
-                  className="rounded-lg border border-border bg-secondary px-3 py-1.5 text-sm font-medium text-secondary-foreground"
-                >
-                  {timeLabel(s.starts_at)}
+                <li key={s.starts_at}>
+                  <button type="button" aria-pressed={selectedSlot === s.starts_at} onClick={() => setSelectedSlot(s.starts_at)} className={chip(selectedSlot === s.starts_at)}>
+                    {timeLabel(s.starts_at)}
+                  </button>
                 </li>
               ))}
             </ul>
           )}
         </div>
+        {selectedSlot && !confirmation ? (
+          <form onSubmit={submitBooking} className="grid gap-3 border-t border-border pt-4">
+            <p className="font-semibold">{c.selectTime}: {timeLabel(selectedSlot)}</p>
+            {(["name", "mobile", "building", "apartment"] as const).map((field) => (
+              <label key={field} className="grid gap-1 text-sm font-medium">
+                {field === "name" ? c.customerName : field === "mobile" ? c.mobile : field === "building" ? c.building : c.apartment}
+                <input required maxLength={field === "name" ? 100 : field === "building" ? 50 : 20} inputMode={field === "mobile" || field === "building" || field === "apartment" ? "numeric" : undefined} pattern={field === "mobile" ? "05[0-9]{8}" : undefined} value={customer[field]} onChange={(event) => setCustomer({ ...customer, [field]: event.target.value })} className="h-11 rounded-lg border border-input bg-background px-3 font-normal" />
+              </label>
+            ))}
+            {bookingError ? <p role="alert" className="text-sm text-destructive">{c.bookingError}</p> : null}
+            <button disabled={isSubmitting} className="h-11 rounded-lg bg-primary px-4 font-semibold text-primary-foreground disabled:opacity-60">{isSubmitting ? c.creating : c.confirm}</button>
+          </form>
+        ) : null}
+        {confirmation ? (
+          <div role="status" className="grid gap-2 rounded-xl border border-primary/30 bg-primary/5 p-4">
+            <p className="font-semibold text-primary">{c.confirmed}</p>
+            <p className="text-sm">{c.bookedAt}: {timeLabel(confirmation.startsAt)}</p>
+            <a className="text-sm font-medium underline" href={`/${lang}/manage-booking?token=${encodeURIComponent(confirmation.token)}`}>{c.manage}</a>
+          </div>
+        ) : null}
       </div>
     </div>
   );

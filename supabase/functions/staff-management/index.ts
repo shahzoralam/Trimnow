@@ -53,9 +53,15 @@ Deno.serve(async (request) => {
     if (["save-hours", "save-breaks", "save-holiday", "delete-holiday"].includes(body.action)) {
       if ((!isAdmin && !isBarber) || typeof body.barber_id !== "string" || !(await canManageBarber(auth.user.id, isAdmin, body.barber_id))) return json({ error: "forbidden" }, 403);
       if (body.action === "save-hours") {
-        if (!Array.isArray(body.hours) || body.hours.some((h: Record<string, unknown>) => typeof h.weekday !== "number" || !Number.isInteger(h.weekday) || h.weekday < 0 || h.weekday > 6 || !/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(String(h.open_time)) || !/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(String(h.close_time)) || String(h.open_time) >= String(h.close_time))) return json({ error: "invalid_request" }, 400);
+        if (!Array.isArray(body.hours) || body.hours.length > 7 || body.hours.some((h: Record<string, unknown>) => typeof h.weekday !== "number" || !Number.isInteger(h.weekday) || h.weekday < 0 || h.weekday > 6 || !/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(String(h.open_time)) || !/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(String(h.close_time)) || String(h.open_time) >= String(h.close_time)) || new Set(body.hours.map((h: Record<string, unknown>) => h.weekday)).size !== body.hours.length) return json({ error: "invalid_request" }, 400);
         const { error } = await admin.from("working_hours").upsert(body.hours.map((h: Record<string, unknown>) => ({ barber_id: body.barber_id, weekday: h.weekday, open_time: h.open_time, close_time: h.close_time })), { onConflict: "barber_id,weekday" });
         if (error) return json({ error: "save_failed" }, 400);
+        const scheduledDays = body.hours.map((h: Record<string, unknown>) => h.weekday);
+        for (let weekday = 0; weekday < 7; weekday += 1) {
+          if (scheduledDays.includes(weekday)) continue;
+          const { error: deleteError } = await admin.from("working_hours").delete().eq("barber_id", body.barber_id).eq("weekday", weekday);
+          if (deleteError) return json({ error: "save_failed" }, 400);
+        }
         await announceBarberAvailability(body.barber_id);
         return json({ ok: true });
       }

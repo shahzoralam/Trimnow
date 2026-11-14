@@ -208,7 +208,7 @@ export function riyadhDates(count: number, from = new Date()): string[] {
     month: "2-digit",
     day: "2-digit",
   });
-  const [y, m, d] = fmt.format(from).split("-").map(Number);
+  const [y = 1970, m = 1, d = 1] = fmt.format(from).split("-").map(Number);
   return Array.from({ length: count }, (_, i) =>
     new Date(Date.UTC(y, m - 1, d + i)).toISOString().slice(0, 10),
   );

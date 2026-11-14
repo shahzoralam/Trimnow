@@ -77,7 +77,7 @@ Deno.serve(async (request) => {
         if (slot) { chosen = { id, slot }; break; }
       }
       if (!chosen) return json({ error: "slot_unavailable" }, 409);
-      const { data: updated, error } = await admin.from("bookings").update({ starts_at: chosen.slot.starts_at, barber_id: chosen.id }).eq("id", booking.id).select("id,starts_at,ends_at,status").single();
+      const { data: updated, error } = await admin.from("bookings").update({ starts_at: chosen.slot.starts_at, ends_at: chosen.slot.ends_at, barber_id: chosen.id }).eq("id", booking.id).select("id,starts_at,ends_at,status").single();
       if (error) return json({ error: error.code === "23P01" ? "slot_unavailable" : "booking_failed" }, 409);
       return json({ booking: updated });
     }

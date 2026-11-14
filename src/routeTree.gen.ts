@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as LangRouteImport } from './routes/$lang'
 import { Route as LangIndexRouteImport } from './routes/$lang.index'
 import { Route as LangManageBookingRouteImport } from './routes/$lang.manage-booking'
+import { Route as LangStaffRouteImport } from './routes/$lang.staff'
 import { Route as LangCommunityCommunitySlugIndexRouteImport } from './routes/$lang.community.$communitySlug.index'
 import { Route as LangCommunityCommunitySlugShopSlugRouteImport } from './routes/$lang.community.$communitySlug.$shopSlug'
 
@@ -36,6 +37,11 @@ const LangManageBookingRoute = LangManageBookingRouteImport.update({
   path: '/manage-booking',
   getParentRoute: () => LangRoute,
 } as any)
+const LangStaffRoute = LangStaffRouteImport.update({
+  id: '/staff',
+  path: '/staff',
+  getParentRoute: () => LangRoute,
+} as any)
 const LangCommunityCommunitySlugIndexRoute =
   LangCommunityCommunitySlugIndexRouteImport.update({
     id: '/community/$communitySlug/',
@@ -53,6 +59,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$lang': typeof LangRouteWithChildren
   '/$lang/manage-booking': typeof LangManageBookingRoute
+  '/$lang/staff': typeof LangStaffRoute
   '/$lang/': typeof LangIndexRoute
   '/$lang/community/$communitySlug/$shopSlug': typeof LangCommunityCommunitySlugShopSlugRoute
   '/$lang/community/$communitySlug/': typeof LangCommunityCommunitySlugIndexRoute
@@ -60,6 +67,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$lang/manage-booking': typeof LangManageBookingRoute
+  '/$lang/staff': typeof LangStaffRoute
   '/$lang': typeof LangIndexRoute
   '/$lang/community/$communitySlug/$shopSlug': typeof LangCommunityCommunitySlugShopSlugRoute
   '/$lang/community/$communitySlug': typeof LangCommunityCommunitySlugIndexRoute
@@ -69,6 +77,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/$lang': typeof LangRouteWithChildren
   '/$lang/manage-booking': typeof LangManageBookingRoute
+  '/$lang/staff': typeof LangStaffRoute
   '/$lang/': typeof LangIndexRoute
   '/$lang/community/$communitySlug/$shopSlug': typeof LangCommunityCommunitySlugShopSlugRoute
   '/$lang/community/$communitySlug/': typeof LangCommunityCommunitySlugIndexRoute
@@ -79,6 +88,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$lang'
     | '/$lang/manage-booking'
+    | '/$lang/staff'
     | '/$lang/'
     | '/$lang/community/$communitySlug/$shopSlug'
     | '/$lang/community/$communitySlug/'
@@ -86,6 +96,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/$lang/manage-booking'
+    | '/$lang/staff'
     | '/$lang'
     | '/$lang/community/$communitySlug/$shopSlug'
     | '/$lang/community/$communitySlug'
@@ -94,6 +105,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$lang'
     | '/$lang/manage-booking'
+    | '/$lang/staff'
     | '/$lang/'
     | '/$lang/community/$communitySlug/$shopSlug'
     | '/$lang/community/$communitySlug/'
@@ -134,6 +146,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LangManageBookingRouteImport
       parentRoute: typeof LangRoute
     }
+    '/$lang/staff': {
+      id: '/$lang/staff'
+      path: '/staff'
+      fullPath: '/$lang/staff'
+      preLoaderRoute: typeof LangStaffRouteImport
+      parentRoute: typeof LangRoute
+    }
     '/$lang/community/$communitySlug/': {
       id: '/$lang/community/$communitySlug/'
       path: '/community/$communitySlug'
@@ -153,6 +172,7 @@ declare module '@tanstack/react-router' {
 
 interface LangRouteChildren {
   LangManageBookingRoute: typeof LangManageBookingRoute
+  LangStaffRoute: typeof LangStaffRoute
   LangIndexRoute: typeof LangIndexRoute
   LangCommunityCommunitySlugShopSlugRoute: typeof LangCommunityCommunitySlugShopSlugRoute
   LangCommunityCommunitySlugIndexRoute: typeof LangCommunityCommunitySlugIndexRoute
@@ -160,6 +180,7 @@ interface LangRouteChildren {
 
 const LangRouteChildren: LangRouteChildren = {
   LangManageBookingRoute: LangManageBookingRoute,
+  LangStaffRoute: LangStaffRoute,
   LangIndexRoute: LangIndexRoute,
   LangCommunityCommunitySlugShopSlugRoute:
     LangCommunityCommunitySlugShopSlugRoute,

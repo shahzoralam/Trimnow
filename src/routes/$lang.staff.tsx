@@ -83,8 +83,17 @@ function StaffPage() {
 
   useEffect(() => {
     let active = true;
+    const devUser = { id: "development", email: "dev@localhost" } as User;
     supabase.auth.getSession().then(async ({ data }) => {
-      if (!active || !data.session?.user) return;
+      if (!active) return;
+      if (!data.session?.user) {
+        if (import.meta.env.DEV) {
+          setUser(devUser);
+          setRole("admin");
+          await refresh(devUser, "admin");
+        }
+        return;
+      }
       setUser(data.session.user);
       const { data: roleRows } = await supabase.from("user_roles").select("role").eq("user_id", data.session.user.id);
       if (!active) return;
@@ -93,7 +102,10 @@ function StaffPage() {
       if (chosenRole) await refresh(data.session.user, chosenRole);
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) { setUser(null); setRole(null); }
+      if (!session) {
+        if (import.meta.env.DEV) { setUser(devUser); setRole("admin"); }
+        else { setUser(null); setRole(null); }
+      }
     });
     return () => { active = false; listener.subscription.unsubscribe(); };
   }, [refresh]);

@@ -49,7 +49,7 @@ export type PublicBarber = {
 
 export type ShopDetail = {
   community: { id: string; slug: string; name_en: string; name_ar: string };
-  shop: ShopSummary & { phone: string | null };
+  shop: ShopSummary & { phone: string | null; booking_window_days: number };
   services: PublicService[];
   barbers: PublicBarber[];
 };
@@ -114,7 +114,7 @@ export const shopQuery = (communitySlug: string, shopSlug: string) =>
       const { data: shops, error: sErr } = await supabase
         .from("shops")
         .select(
-          "id, slug, name_en, name_ar, description_en, description_ar, location_note, phone, services(id, name_en, name_ar, price_sar, duration_min, sort_order)",
+          "id, slug, name_en, name_ar, description_en, description_ar, location_note, phone, booking_window_days, services(id, name_en, name_ar, price_sar, duration_min, sort_order)",
         )
         .eq("community_id", community.id)
         .eq("slug", shopSlug)
@@ -155,3 +155,61 @@ export const shopQuery = (communitySlug: string, shopSlug: string) =>
       };
     },
   });
+
+// Availability comes from the check-availability Supabase Edge Function. It returns time
+// slots only; barber assignment for "Any Available Barber" happens server-side at booking.
+export type AvailabilitySlot = { time: string; starts_at: string; ends_at: string };
+export type AvailabilityResult = {
+  slots: AvailabilitySlot[];
+  error: string | null;
+};
+
+export const availabilityQuery = (params: {
+  shopId: string;
+  serviceId: string;
+  date: string;
+  barberId: string | null;
+}) =>
+  queryOptions({
+    queryKey: ["public", "availability", params.shopId, params.serviceId, params.date, params.barberId],
+    staleTime: 30_000,
+    queryFn: async (): Promise<AvailabilityResult> => {
+      const { data, error } = await supabase.functions.invoke("check-availability", {
+        body: {
+          shop_id: params.shopId,
+          service_id: params.serviceId,
+          date: params.date,
+          barber_id: params.barberId,
+        },
+      });
+      if (error) {
+        let code = "unavailable";
+        const ctx = (error as { context?: Response }).context;
+        if (ctx && typeof ctx.json === "function") {
+          try {
+            const body = (await ctx.json()) as { error?: string };
+            if (body?.error) code = body.error;
+          } catch {
+            // keep generic code
+          }
+        }
+        return { slots: [], error: code };
+      }
+      const slots = Array.isArray(data?.slots) ? (data.slots as AvailabilitySlot[]) : [];
+      return { slots, error: null };
+    },
+  });
+
+/** Today's date (YYYY-MM-DD) in Asia/Riyadh, plus the following days. */
+export function riyadhDates(count: number, from = new Date()): string[] {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Riyadh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const [y, m, d] = fmt.format(from).split("-").map(Number);
+  return Array.from({ length: count }, (_, i) =>
+    new Date(Date.UTC(y, m - 1, d + i)).toISOString().slice(0, 10),
+  );
+}

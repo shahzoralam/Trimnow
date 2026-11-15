@@ -95,10 +95,7 @@ function HomePage() {
                       {location}
                     </span>
                   ) : null}
-                  <span className="mt-auto inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 font-semibold text-primary-foreground transition group-hover:bg-primary/90">
-                    {lang === "ar" ? "اختر المحل" : "Choose Shop"}
-                    <ChevronRight className="size-4 rtl:rotate-180" aria-hidden />
-                  </span>
+                  <ChevronRight className="mt-auto size-5 self-end text-muted-foreground transition group-hover:text-primary rtl:rotate-180" aria-hidden />
                 </Link>
               </li>
             );

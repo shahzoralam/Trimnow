@@ -93,16 +93,6 @@ function StaffPage() {
   const weekdays = ar ? ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"] : ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
   const refresh = useCallback(async (currentUser: User, currentRole: string) => {
-    if (currentUser.id === "development") {
-      const { data, error: loadError } = await supabase.functions.invoke("staff-management", { body: { action: "get-dashboard" } });
-      if (loadError || data?.error) return;
-      setCommunities(data.communities ?? []);
-      setShops(data.shops ?? []);
-      setServices(data.services ?? []);
-      setBarbers(data.barbers ?? []);
-      setBookings(data.bookings ?? []);
-      return;
-    }
     if (currentRole === "barber") {
       const { data, error: loadError } = await supabase.functions.invoke("staff-management", { body: { action: "get-own-availability" } });
       if (loadError || data?.error) {
@@ -139,15 +129,9 @@ function StaffPage() {
 
   useEffect(() => {
     let active = true;
-    const devUser = { id: "development", email: "dev@localhost" } as User;
     supabase.auth.getSession().then(async ({ data }) => {
       if (!active) return;
       if (!data.session?.user) {
-        if (import.meta.env.DEV) {
-          setUser(devUser);
-          setRole("admin");
-          await refresh(devUser, "admin");
-        }
         return;
       }
       setUser(data.session.user);
@@ -198,8 +182,14 @@ function StaffPage() {
     setUser(data.user);
     const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", data.user.id);
     const nextRole = roles?.some((r) => r.role === "admin") ? "admin" : roles?.some((r) => r.role === "barber") ? "barber" : null;
+    if (!nextRole) {
+      setBusy(false);
+      setUser(null);
+      setError(text.access);
+      return;
+    }
     setRole(nextRole);
-    if (nextRole) await refresh(data.user, nextRole);
+    await refresh(data.user, nextRole);
     setBusy(false);
   };
   const saveHours = async (event: FormEvent<HTMLFormElement>) => {
@@ -252,15 +242,6 @@ function StaffPage() {
   const chooseBarber = async (id: string) => {
     setSelectedBarber(id); setHours([]); setBreaks([]); setHolidays([]); setTimeBlocks([]);
     if (!id) return;
-    if (user?.id === "development") {
-      const { data } = await supabase.functions.invoke("staff-management", { body: { action: "get-barber-schedule", barber_id: id } });
-      setHours(data?.hours ?? []);
-      setBreaks(data?.breaks ?? []);
-      setHolidays(data?.holidays ?? []);
-      setTimeBlocks(data?.time_blocks ?? []);
-      setBarberServiceIds(data?.service_ids ?? []);
-      return;
-    }
     const todayRiyadh = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
     const [h, b, hol, bs, blocks] = await Promise.all([
       supabase.from("working_hours").select("*").eq("barber_id", id).order("weekday"),
@@ -295,7 +276,7 @@ function StaffPage() {
   return <section dir={ar ? "rtl" : "ltr"} className="grid gap-5">
     <div className="flex items-start justify-between gap-4">
       <PageHeading eyebrow={isAdmin ? adminLabel : barberDashboardTitle} title={isAdmin ? adminLabel : barberDashboardTitle} subtitle={user.email ?? ""} />
-      <button className="shrink-0 rounded-lg border border-border px-3 py-2 text-sm" onClick={() => void supabase.auth.signOut()}>{text.logout}</button>
+      <button className="shrink-0 rounded-lg border border-border px-3 py-2 text-sm" onClick={() => { setUser(null); setRole(null); setError(""); setNotice(""); void supabase.auth.signOut(); }}>{text.logout}</button>
     </div>
     {!role ? <p role="alert">{text.access}</p> : <>
       {isAdmin ? AdminPanel() : null}

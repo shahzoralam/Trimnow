@@ -67,12 +67,12 @@ function ShopPage() {
   return (
     <section>
       <Link
-        to="/$lang/community/$communitySlug"
-        params={{ lang, communitySlug: community.slug }}
+        to="/$lang/"
+        params={{ lang }}
         className="mb-5 inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
       >
         <BackIcon />
-        {pickLocalized(community, "name", lang)}
+        {lang === "ar" ? "إسكان الدمام" : "Dammam Iskan"}
       </Link>
 
       <PageHeading

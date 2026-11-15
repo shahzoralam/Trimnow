@@ -6,6 +6,11 @@ const publicKey = (Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_P
 const localBackend = ["localhost", "127.0.0.1", "::1", "kong"].includes(new URL(url).hostname);
 const allowedStatus = ["confirmed", "cancelled", "completed", "no_show"];
 const allowed = (value: unknown, max: number) => typeof value === "string" && value.trim().length > 0 && value.trim().length <= max;
+const validDate = (value: unknown): value is string => {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+};
 
 async function authenticate(request: Request) {
   const token = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
@@ -27,6 +32,11 @@ async function canManageBarber(userId: string, isAdmin: boolean, barberId: strin
   return Boolean(data);
 }
 
+async function getOwnBarber(userId: string) {
+  const { data } = await admin.from("barbers").select("id,shop_id,name_en,name_ar,user_id,is_active").eq("user_id", userId).eq("is_active", true).maybeSingle();
+  return data;
+}
+
 async function announceBarberAvailability(barberId: string) {
   const { data } = await admin.from("barbers").select("shop_id").eq("id", barberId).single();
   if (data) await announceAvailability(data.shop_id);
@@ -45,6 +55,19 @@ Deno.serve(async (request) => {
     const { data: rateAllowed, error: rateError } = await admin.rpc("check_rate_limit", { _bucket: "staff_write", _key_hash: remoteHash, _max: 60, _window_seconds: 60 });
     if (rateError || !rateAllowed) return json({ error: "rate_limited" }, 429);
 
+    if (body.action === "get-own-availability" && isBarber && !isAdmin) {
+      const barber = await getOwnBarber(auth.user.id);
+      if (!barber) return json({ error: "barber_not_found" }, 404);
+      const todayRiyadh = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+      const [hours, breaks, holidays, timeBlocks] = await Promise.all([
+        admin.from("working_hours").select("*").eq("barber_id", barber.id).order("weekday"),
+        admin.from("breaks").select("*").eq("barber_id", barber.id).order("weekday"),
+        admin.from("holidays").select("*").eq("barber_id", barber.id).gte("date", todayRiyadh).order("date"),
+        admin.from("barber_time_blocks").select("*").eq("barber_id", barber.id).gte("block_date", todayRiyadh).order("block_date").order("start_time"),
+      ]);
+      if (hours.error || breaks.error || holidays.error || timeBlocks.error) return json({ error: "load_failed" }, 500);
+      return json({ barber, hours: hours.data, breaks: breaks.data, holidays: holidays.data, time_blocks: timeBlocks.data });
+    }
     if (body.action === "get-dashboard" && isAdmin) {
       const [communities, shops, services, barbers, bookings] = await Promise.all([
         admin.from("communities").select("*").order("name_en"),
@@ -58,18 +81,20 @@ Deno.serve(async (request) => {
     }
     if (body.action === "get-barber-schedule" && isAdmin) {
       if (typeof body.barber_id !== "string") return json({ error: "invalid_request" }, 400);
-      const [hours, breaks, holidays, assignments] = await Promise.all([
+      const todayRiyadh = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+      const [hours, breaks, holidays, assignments, timeBlocks] = await Promise.all([
         admin.from("working_hours").select("*").eq("barber_id", body.barber_id).order("weekday"),
         admin.from("breaks").select("*").eq("barber_id", body.barber_id).order("weekday"),
-        admin.from("holidays").select("*").eq("barber_id", body.barber_id).gte("date", new Date().toISOString().slice(0, 10)).order("date"),
+        admin.from("holidays").select("*").eq("barber_id", body.barber_id).gte("date", todayRiyadh).order("date"),
         admin.from("barber_services").select("service_id").eq("barber_id", body.barber_id),
+        admin.from("barber_time_blocks").select("*").eq("barber_id", body.barber_id).gte("block_date", todayRiyadh).order("block_date").order("start_time"),
       ]);
-      if (hours.error || breaks.error || holidays.error || assignments.error) return json({ error: "load_failed" }, 500);
-      return json({ hours: hours.data, breaks: breaks.data, holidays: holidays.data, service_ids: assignments.data.map((row) => row.service_id) });
+      if (hours.error || breaks.error || holidays.error || assignments.error || timeBlocks.error) return json({ error: "load_failed" }, 500);
+      return json({ hours: hours.data, breaks: breaks.data, holidays: holidays.data, service_ids: assignments.data.map((row) => row.service_id), time_blocks: timeBlocks.data });
     }
 
     if (body.action === "set-booking-status") {
-      if ((!isAdmin && !isBarber) || typeof body.booking_id !== "string" || !allowedStatus.includes(body.status) || (!isAdmin && body.status === "no_show")) return json({ error: "forbidden" }, 403);
+      if (!isAdmin || typeof body.booking_id !== "string" || !allowedStatus.includes(body.status)) return json({ error: "forbidden" }, 403);
       const { data: booking } = await admin.from("bookings").select("barber_id,shop_id,status").eq("id", body.booking_id).maybeSingle();
       if (!booking || !(await canManageBarber(auth.user.id, isAdmin, booking.barber_id))) return json({ error: "forbidden" }, 403);
       if (!isAdmin && (booking.status !== "confirmed" || !["confirmed", "completed", "cancelled"].includes(body.status))) return json({ error: "forbidden" }, 403);
@@ -80,6 +105,11 @@ Deno.serve(async (request) => {
     }
 
     if (["save-hours", "save-breaks", "save-holiday", "delete-holiday"].includes(body.action)) {
+      if (isBarber && !isAdmin) {
+        const ownBarber = await getOwnBarber(auth.user.id);
+        if (!ownBarber) return json({ error: "forbidden" }, 403);
+        body.barber_id = ownBarber.id;
+      }
       if ((!isAdmin && !isBarber) || typeof body.barber_id !== "string" || !(await canManageBarber(auth.user.id, isAdmin, body.barber_id))) return json({ error: "forbidden" }, 403);
       if (body.action === "save-hours") {
         if (!Array.isArray(body.hours) || body.hours.length > 7 || body.hours.some((h: Record<string, unknown>) => typeof h.weekday !== "number" || !Number.isInteger(h.weekday) || h.weekday < 0 || h.weekday > 6 || !/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(String(h.open_time)) || !/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(String(h.close_time)) || String(h.open_time) >= String(h.close_time)) || new Set(body.hours.map((h: Record<string, unknown>) => h.weekday)).size !== body.hours.length) return json({ error: "invalid_request" }, 400);
@@ -121,6 +151,41 @@ Deno.serve(async (request) => {
       if (error) return json({ error: "delete_failed" }, 400);
       await announceBarberAvailability(body.barber_id);
       return json({ ok: true });
+    }
+    if (["save-time-block", "delete-time-block"].includes(body.action)) {
+      if (isBarber && !isAdmin) {
+        const ownBarber = await getOwnBarber(auth.user.id);
+        if (!ownBarber) return json({ error: "forbidden" }, 403);
+        body.barber_id = ownBarber.id;
+      }
+      if ((!isAdmin && !isBarber) || typeof body.barber_id !== "string" || !(await canManageBarber(auth.user.id, isAdmin, body.barber_id))) return json({ error: "forbidden" }, 403);
+      if (body.action === "save-time-block") {
+      const date = body.block_date;
+      const startTime = body.start_time;
+      const endTime = body.end_time;
+      if (!validDate(date) || typeof startTime !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime) || typeof endTime !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime) || startTime >= endTime || (body.reason !== undefined && typeof body.reason !== "string")) return json({ error: "invalid_request" }, 400);
+      const startsAt = new Date(`${date}T${startTime}:00+03:00`);
+      const endsAt = new Date(`${date}T${endTime}:00+03:00`);
+      const dayStart = new Date(`${date}T00:00:00+03:00`);
+      const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+      const { data: bookings, error: bookingError } = await admin.from("bookings").select("id,starts_at,ends_at").eq("barber_id", body.barber_id).eq("status", "confirmed").lt("starts_at", dayEnd.toISOString()).gt("ends_at", dayStart.toISOString());
+      if (bookingError) return json({ error: "load_failed" }, 500);
+      if (bookings?.some((booking) => startsAt < new Date(booking.ends_at) && endsAt > new Date(booking.starts_at))) return json({ error: "block_overlaps_booking" }, 409);
+      const payload = { barber_id: body.barber_id, block_date: date, start_time: startTime, end_time: endTime, reason: typeof body.reason === "string" && body.reason.trim() ? body.reason.trim().slice(0, 200) : null };
+      const result = typeof body.block_id === "string" && body.block_id
+        ? await admin.from("barber_time_blocks").update(payload).eq("id", body.block_id).eq("barber_id", body.barber_id).select("id").maybeSingle()
+        : await admin.from("barber_time_blocks").insert(payload).select("id").single();
+      if (result.error || (typeof body.block_id === "string" && body.block_id && !result.data)) return json({ error: "save_failed" }, 400);
+      await announceBarberAvailability(body.barber_id);
+      return json({ ok: true });
+    }
+    if (body.action === "delete-time-block") {
+      if (typeof body.block_id !== "string") return json({ error: "invalid_request" }, 400);
+      const { data, error } = await admin.from("barber_time_blocks").delete().eq("id", body.block_id).eq("barber_id", body.barber_id).select("id").maybeSingle();
+      if (error || !data) return json({ error: "delete_failed" }, 400);
+      await announceBarberAvailability(body.barber_id);
+      return json({ ok: true });
+      }
     }
 
     if (!isAdmin) return json({ error: "forbidden" }, 403);

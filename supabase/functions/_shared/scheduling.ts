@@ -38,12 +38,13 @@ export async function openSlots(shopId: string, serviceId: string, date: string,
   const { data: barbers } = await query;
   if (!barbers?.length) return [];
   const ids = barbers.map((b) => b.id);
-  const [{ data: hours }, { data: breaks }, { data: barberHolidays }, { data: shopHoliday }, { data: bookings }] = await Promise.all([
+  const [{ data: hours }, { data: breaks }, { data: barberHolidays }, { data: shopHoliday }, { data: bookings }, { data: timeBlocks }] = await Promise.all([
     admin.from("working_hours").select("barber_id,open_time,close_time").in("barber_id", ids).eq("weekday", weekday),
     admin.from("breaks").select("barber_id,start_time,end_time").in("barber_id", ids).eq("weekday", weekday),
     admin.from("holidays").select("barber_id").in("barber_id", ids).eq("date", date),
     admin.from("holidays").select("id").eq("shop_id", shopId).is("barber_id", null).eq("date", date).maybeSingle(),
     admin.from("bookings").select("barber_id,starts_at,ends_at").in("barber_id", ids).lt("starts_at", `${date}T23:59:59+03:00`).gt("ends_at", `${date}T00:00:00+03:00`).neq("status", "cancelled"),
+    admin.from("barber_time_blocks").select("barber_id,start_time,end_time").in("barber_id", ids).eq("block_date", date),
   ]);
   if (shopHoliday) return [];
   const result = new Map<string, { starts_at: string; ends_at: string; time: string }>();
@@ -71,7 +72,13 @@ export async function openSlots(shopId: string, serviceId: string, date: string,
         const breakEnd = Number(b.end_time.slice(0, 2)) * 60 + Number(b.end_time.slice(3, 5));
         return minute < breakEnd && endMinute > breakStart;
       });
-      if (overlapsBreak || bookings?.some((b) => b.barber_id === barber.id && start < new Date(b.ends_at) && end > new Date(b.starts_at))) continue;
+      const overlapsBlock = timeBlocks?.some((block) => {
+        if (block.barber_id !== barber.id) return false;
+        const blockStart = Number(block.start_time.slice(0, 2)) * 60 + Number(block.start_time.slice(3, 5));
+        const blockEnd = Number(block.end_time.slice(0, 2)) * 60 + Number(block.end_time.slice(3, 5));
+        return minute < blockEnd && endMinute > blockStart;
+      });
+      if (overlapsBreak || overlapsBlock || bookings?.some((b) => b.barber_id === barber.id && start < new Date(b.ends_at) && end > new Date(b.starts_at))) continue;
       result.set(start.toISOString(), { starts_at: start.toISOString(), ends_at: end.toISOString(), time: `${hour}:${mins}` });
     }
   }

@@ -15,6 +15,7 @@ type Shop = Tables<"shops">;
 type Service = Tables<"services">;
 type Barber = Tables<"barbers">;
 type Booking = Tables<"bookings">;
+type TimeBlock = Tables<"barber_time_blocks">;
 const inputClass = "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm";
 const buttonClass = "rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60";
 
@@ -33,6 +34,36 @@ function StaffPage() {
     title: "لوحة الفريق", subtitle: "تسجيل الدخول للحلاقين والإدارة", email: "البريد الإلكتروني", password: "كلمة المرور", login: "تسجيل الدخول", logout: "تسجيل الخروج", loading: "جارٍ التحميل…", access: "لا توجد صلاحية فريق لهذا الحساب.", barber: "لوحة الحلاق", admin: "لوحة الإدارة", today: "الحجوزات القادمة", noBookings: "لا توجد حجوزات.", confirmed: "مؤكد", completed: "مكتمل", cancelled: "ملغي", noShow: "لم يحضر", hours: "ساعات العمل الأسبوعية", save: "حفظ", breaks: "الاستراحات", holidays: "الإجازات", addHoliday: "إضافة إجازة", date: "التاريخ", reason: "السبب", community: "المجمّع", shop: "المحل", service: "الخدمة", barberAccount: "حساب حلاق", nameEn: "الاسم بالإنجليزية", nameAr: "الاسم بالعربية", slug: "المعرّف المختصر", create: "إنشاء", price: "السعر بالريال", duration: "المدة بالدقائق", emailBarber: "بريد الحلاق", tempPassword: "كلمة مرور أولية (12 حرفًا على الأقل)", manageCommunities: "إدارة المجمّعات", manageShops: "إدارة المحلات", manageServices: "إدارة الخدمات", manageBarbers: "إدارة الحلاقين", bookings: "كل الحجوزات", active: "نشط", status: "الحالة", weekday: "اليوم", open: "الفتح", close: "الإغلاق", dayOff: "اترك اليوم دون تحديد ليكون يوم إجازة أسبوعيًا", breakStart: "بداية الاستراحة", breakEnd: "نهايتها", saveBreak: "حفظ الاستراحة", saved: "تم الحفظ.", failed: "تعذر إكمال العملية.", select: "اختر", location: "ملاحظة الموقع", phone: "الهاتف", descriptionEn: "الوصف بالإنجليزية", descriptionAr: "الوصف بالعربية", allServices: "كل الخدمات", serviceAssignments: "خدمات الحلاق", assign: "حفظ الخدمات", update: "تحديث", edit: "تعديل", saveChanges: "حفظ التغييرات", deactivated: "غير نشط", createFirst: "أضف البيانات للبدء." } : {
     title: "Staff dashboard", subtitle: "Sign in for barber or administrator access", email: "Email", password: "Password", login: "Sign in", logout: "Sign out", loading: "Loading…", access: "This account has no staff role.", barber: "Barber dashboard", admin: "Admin dashboard", today: "Upcoming bookings", noBookings: "No bookings found.", confirmed: "Confirmed", completed: "Completed", cancelled: "Cancelled", noShow: "No show", hours: "Weekly working hours", save: "Save", breaks: "Breaks", holidays: "Holidays", addHoliday: "Add holiday", date: "Date", reason: "Reason", community: "Community", shop: "Shop", service: "Service", barberAccount: "Barber account", nameEn: "Name in English", nameAr: "Name in Arabic", slug: "Slug", create: "Create", price: "Price (SAR)", duration: "Duration (minutes)", emailBarber: "Barber email", tempPassword: "Initial password (at least 12 characters)", manageCommunities: "Manage communities", manageShops: "Manage shops", manageServices: "Manage services", manageBarbers: "Manage barbers", bookings: "All bookings", active: "Active", status: "Status", weekday: "Weekday", open: "Open", close: "Close", dayOff: "Leave unchecked for a weekly day off", breakStart: "Break start", breakEnd: "Break end", saveBreak: "Save break", saved: "Saved.", failed: "The operation failed.", select: "Select", location: "Location note", phone: "Phone", descriptionEn: "Description in English", descriptionAr: "Description in Arabic", allServices: "All services", serviceAssignments: "Barber services", assign: "Save services", update: "Update", edit: "Edit", saveChanges: "Save changes", deactivated: "Inactive", createFirst: "Add records to get started." };
 
+  const blockText = ar ? {
+    title: "فترات عدم التوفر",
+    add: "إضافة فترة حظر",
+    save: "حفظ الفترة",
+    edit: "تعديل",
+    cancel: "إلغاء",
+    remove: "إزالة",
+    saved: "تم حفظ التغييرات.",
+    overlap: "يتعارض هذا الوقت مع حجز مؤكد.",
+    failed: "تعذر حفظ الفترة. حاول مرة أخرى.",
+    blockDate: "التاريخ",
+    start: "من",
+    end: "إلى",
+    reason: "السبب (اختياري)",
+  } : {
+    title: "Unavailable time blocks",
+    add: "Add time block",
+    save: "Save block",
+    edit: "Edit",
+    cancel: "Cancel",
+    remove: "Remove",
+    saved: "Availability changes saved.",
+    overlap: "This time overlaps a confirmed booking.",
+    failed: "Could not save the time block. Please try again.",
+    blockDate: "Date",
+    start: "From",
+    end: "To",
+    reason: "Reason (optional)",
+  };
+  const barberDashboardTitle = ar ? "لوحة إدارة توفر الحلاق" : "Barber Availability Dashboard";
   const [user, setUser] = useState<User | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -49,6 +80,7 @@ function StaffPage() {
   const [hours, setHours] = useState<Tables<"working_hours">[]>([]);
   const [breaks, setBreaks] = useState<Tables<"breaks">[]>([]);
   const [holidays, setHolidays] = useState<Tables<"holidays">[]>([]);
+  const [timeBlocks, setTimeBlocks] = useState<TimeBlock[]>([]);
   const [selectedBarber, setSelectedBarber] = useState("");
   const [communityForm, setCommunityForm] = useState({ id: "", name_en: "", name_ar: "", slug: "", is_active: true });
   const [shopForm, setShopForm] = useState({ id: "", community_id: "", slug: "", name_en: "", name_ar: "", description_en: "", description_ar: "", phone: "", location_note: "", is_active: true });
@@ -57,6 +89,7 @@ function StaffPage() {
   const [barberServiceIds, setBarberServiceIds] = useState<string[]>([]);
   const [holidayForm, setHolidayForm] = useState({ date: "", reason: "" });
   const [breakForm, setBreakForm] = useState({ id: "", weekday: "0", start_time: "12:00", end_time: "13:00" });
+  const [timeBlockForm, setTimeBlockForm] = useState({ id: "", date: "", start_time: "14:00", end_time: "15:00", reason: "" });
   const weekdays = ar ? ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"] : ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
   const refresh = useCallback(async (currentUser: User, currentRole: string) => {
@@ -68,6 +101,24 @@ function StaffPage() {
       setServices(data.services ?? []);
       setBarbers(data.barbers ?? []);
       setBookings(data.bookings ?? []);
+      return;
+    }
+    if (currentRole === "barber") {
+      const { data, error: loadError } = await supabase.functions.invoke("staff-management", { body: { action: "get-own-availability" } });
+      if (loadError || data?.error) {
+        setError(text.failed);
+        return;
+      }
+      setMyBarber(data.barber ?? null);
+      setHours(data.hours ?? []);
+      setBreaks(data.breaks ?? []);
+      setHolidays(data.holidays ?? []);
+      setTimeBlocks(data.time_blocks ?? []);
+      setCommunities([]);
+      setShops([]);
+      setServices([]);
+      setBarbers([]);
+      setBookings([]);
       return;
     }
     const bookingQuery = supabase.from("bookings").select("*").order("starts_at");
@@ -84,22 +135,7 @@ function StaffPage() {
     setServices(serviceResult.data ?? []);
     setBarbers(barberResult.data ?? []);
     setBookings(bookingResult.data ?? []);
-    if (currentRole === "barber") {
-      const own = (barberResult.data ?? []).find((row) => row.user_id === currentUser.id) ?? null;
-      setMyBarber(own);
-      if (own) {
-        setSelectedBarber(own.id);
-        const [hoursResult, breaksResult, holidayResult] = await Promise.all([
-          supabase.from("working_hours").select("*").eq("barber_id", own.id).order("weekday"),
-          supabase.from("breaks").select("*").eq("barber_id", own.id).order("weekday"),
-          supabase.from("holidays").select("*").eq("barber_id", own.id).gte("date", new Date().toISOString().slice(0, 10)).order("date"),
-        ]);
-        setHours(hoursResult.data ?? []);
-        setBreaks(breaksResult.data ?? []);
-        setHolidays(holidayResult.data ?? []);
-      }
-    }
-  }, []);
+  }, [text.failed]);
 
   useEffect(() => {
     let active = true;
@@ -136,9 +172,21 @@ function StaffPage() {
   const submit = async (action: string, payload: Record<string, unknown>) => {
     setBusy(true); setError(""); setNotice("");
     const { data, error: invokeError } = await supabase.functions.invoke("staff-management", { body: { action, ...payload } });
+    let failureCode = data?.error as string | undefined;
+    const errorContext = (invokeError as { context?: Response } | null)?.context;
+    if (invokeError && errorContext && typeof errorContext.json === "function") {
+      try {
+        failureCode = ((await errorContext.json()) as { error?: string }).error ?? failureCode;
+      } catch {
+        failureCode = undefined;
+      }
+    }
     setBusy(false);
-    if (invokeError || data?.error) { setError(text.failed); return null; }
-    setNotice(text.saved);
+    if (invokeError || data?.error) {
+      setError(failureCode === "block_overlaps_booking" ? blockText.overlap : action === "save-time-block" || action === "delete-time-block" ? blockText.failed : text.failed);
+      return null;
+    }
+    setNotice(action === "save-time-block" || action === "delete-time-block" ? blockText.saved : text.saved);
     if (user && role) await refresh(user, role);
     if (role === "admin" && selectedBarber) await chooseBarber(selectedBarber);
     return data;
@@ -181,24 +229,47 @@ function StaffPage() {
     const remaining = breaks.filter((entry) => entry.barber_id === allBarberIds && entry.weekday === item.weekday && entry.id !== breakId).map((entry) => ({ start_time: entry.start_time.slice(0, 5), end_time: entry.end_time.slice(0, 5) }));
     void submit("save-breaks", { barber_id: allBarberIds, weekday: item.weekday, breaks: remaining });
   };
+  const saveTimeBlock = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const result = await submit("save-time-block", {
+      barber_id: allBarberIds,
+      block_id: timeBlockForm.id || undefined,
+      block_date: timeBlockForm.date,
+      start_time: timeBlockForm.start_time,
+      end_time: timeBlockForm.end_time,
+      reason: timeBlockForm.reason,
+    });
+    if (result) setTimeBlockForm({ id: "", date: "", start_time: "14:00", end_time: "15:00", reason: "" });
+  };
+  const editTimeBlock = (block: TimeBlock) => setTimeBlockForm({
+    id: block.id,
+    date: block.block_date,
+    start_time: block.start_time.slice(0, 5),
+    end_time: block.end_time.slice(0, 5),
+    reason: block.reason ?? "",
+  });
+  const removeTimeBlock = (blockId: string) => void submit("delete-time-block", { barber_id: allBarberIds, block_id: blockId });
   const chooseBarber = async (id: string) => {
-    setSelectedBarber(id); setHours([]); setBreaks([]); setHolidays([]);
+    setSelectedBarber(id); setHours([]); setBreaks([]); setHolidays([]); setTimeBlocks([]);
     if (!id) return;
     if (user?.id === "development") {
       const { data } = await supabase.functions.invoke("staff-management", { body: { action: "get-barber-schedule", barber_id: id } });
       setHours(data?.hours ?? []);
       setBreaks(data?.breaks ?? []);
       setHolidays(data?.holidays ?? []);
+      setTimeBlocks(data?.time_blocks ?? []);
       setBarberServiceIds(data?.service_ids ?? []);
       return;
     }
-    const [h, b, hol, bs] = await Promise.all([
+    const todayRiyadh = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+    const [h, b, hol, bs, blocks] = await Promise.all([
       supabase.from("working_hours").select("*").eq("barber_id", id).order("weekday"),
       supabase.from("breaks").select("*").eq("barber_id", id).order("weekday"),
-      supabase.from("holidays").select("*").eq("barber_id", id).gte("date", new Date().toISOString().slice(0, 10)).order("date"),
+      supabase.from("holidays").select("*").eq("barber_id", id).gte("date", todayRiyadh).order("date"),
       supabase.from("barber_services").select("service_id").eq("barber_id", id),
+      supabase.from("barber_time_blocks").select("*").eq("barber_id", id).gte("block_date", todayRiyadh).order("block_date").order("start_time"),
     ]);
-    setHours(h.data ?? []); setBreaks(b.data ?? []); setHolidays(hol.data ?? []); setBarberServiceIds((bs.data ?? []).map((x) => x.service_id));
+    setHours(h.data ?? []); setBreaks(b.data ?? []); setHolidays(hol.data ?? []); setTimeBlocks(blocks.data ?? []); setBarberServiceIds((bs.data ?? []).map((x) => x.service_id));
   };
 
   const section = "grid gap-4 rounded-2xl border border-border bg-card p-4 sm:p-5";
@@ -216,14 +287,14 @@ function StaffPage() {
   const isAdmin = role === "admin";
   const adminLabel = ar ? "المشرف الأعلى" : "Super Admin";
   const staffBarber = isAdmin ? barbers.find((b) => b.id === selectedBarber) : myBarber;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const displayDate = (iso: string) => new Intl.DateTimeFormat(ar ? "ar-SA" : "en-GB", { timeZone: "Asia/Riyadh", dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
   const bookingRows = bookings.filter((b) => isAdmin || b.barber_id === myBarber?.id);
   const allBarberIds = isAdmin ? selectedBarber : myBarber?.id ?? "";
 
   return <section dir={ar ? "rtl" : "ltr"} className="grid gap-5">
     <div className="flex items-start justify-between gap-4">
-      <PageHeading eyebrow={isAdmin ? adminLabel : text.barber} title={isAdmin ? adminLabel : text.barber} subtitle={user.email ?? ""} />
+      <PageHeading eyebrow={isAdmin ? adminLabel : barberDashboardTitle} title={isAdmin ? adminLabel : barberDashboardTitle} subtitle={user.email ?? ""} />
       <button className="shrink-0 rounded-lg border border-border px-3 py-2 text-sm" onClick={() => void supabase.auth.signOut()}>{text.logout}</button>
     </div>
     {!role ? <p role="alert">{text.access}</p> : <>
@@ -234,11 +305,11 @@ function StaffPage() {
       {isAdmin && barbers.length ? <div className={section}><h2 className="font-semibold">{text.hours} · {text.barber}</h2><Select value={selectedBarber} onChange={(id) => void chooseBarber(id)}><option value="">{text.select}</option>{barbers.map((b) => <option key={b.id} value={b.id}>{b.name_en} / {b.name_ar}</option>)}</Select>{staffBarber ? SchedulePanel() : null}</div> : null}
       {!isAdmin && myBarber ? SchedulePanel() : null}
       {!isAdmin && !myBarber ? <p role="alert">{text.access}</p> : null}
-      <div className={section}><h2 className="font-display text-xl font-semibold">{isAdmin ? text.bookings : text.today}</h2>{bookingRows.length === 0 ? <p className="text-sm text-muted-foreground">{text.noBookings}</p> : <ul className="grid gap-3">{bookingRows.map((booking) => {
+      {isAdmin ? <div className={section}><h2 className="font-display text-xl font-semibold">{text.bookings}</h2>{bookingRows.length === 0 ? <p className="text-sm text-muted-foreground">{text.noBookings}</p> : <ul className="grid gap-3">{bookingRows.map((booking) => {
         const barber = barbers.find((b) => b.id === booking.barber_id);
         const service = services.find((s) => s.id === booking.service_id);
-        return <li key={booking.id} className="grid gap-2 rounded-xl border border-border p-3 sm:grid-cols-[1fr_auto] sm:items-center"><div><p className="font-semibold">{booking.customer_name} · {displayDate(booking.starts_at)}</p><p className="text-sm text-muted-foreground">{booking.customer_mobile} · {text.shop}: {shops.find((s) => s.id === booking.shop_id)?.name_en} · {text.service}: {service?.name_en} · {barber?.name_en} · {booking.building}/{booking.apartment}</p><p className="text-xs">{text.status}: {booking.status}</p></div><div className="flex flex-wrap gap-2">{(isAdmin || booking.barber_id === myBarber?.id) && booking.status === "confirmed" ? <><button className="rounded-md border px-2 py-1 text-xs" onClick={() => void changeStatus(booking.id, "completed")}>{text.completed}</button>{isAdmin ? <button className="rounded-md border px-2 py-1 text-xs" onClick={() => void changeStatus(booking.id, "no_show")}>{text.noShow}</button> : null}<button className="rounded-md border px-2 py-1 text-xs" onClick={() => void changeStatus(booking.id, "cancelled")}>{text.cancelled}</button></> : null}</div></li>;
-      })}</ul>}</div>
+        return <li key={booking.id} className="grid gap-2 rounded-xl border border-border p-3 sm:grid-cols-[1fr_auto] sm:items-center"><div><p className="font-semibold">{booking.customer_name} · {displayDate(booking.starts_at)}</p><p className="text-sm text-muted-foreground">{booking.customer_mobile} · {text.shop}: {shops.find((s) => s.id === booking.shop_id)?.name_en} · {text.service}: {service?.name_en} · {barber?.name_en} · {booking.building}/{booking.apartment}</p><p className="text-xs">{text.status}: {booking.status}</p></div><div className="flex flex-wrap gap-2">{booking.status === "confirmed" ? <><button className="rounded-md border px-2 py-1 text-xs" onClick={() => void changeStatus(booking.id, "completed")}>{text.completed}</button><button className="rounded-md border px-2 py-1 text-xs" onClick={() => void changeStatus(booking.id, "no_show")}>{text.noShow}</button><button className="rounded-md border px-2 py-1 text-xs" onClick={() => void changeStatus(booking.id, "cancelled")}>{text.cancelled}</button></> : null}</div></li>;
+      })}</ul>}</div> : null}
     </>}
     {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}{notice ? <p role="status" className="text-sm text-primary">{notice}</p> : null}
   </section>;
@@ -251,6 +322,7 @@ function StaffPage() {
       <form key={scheduleKey} onSubmit={saveHours} className="grid gap-2">{weekdays.map((day, weekday) => { const existing = currentHours.find((h) => h.weekday === weekday); return <div key={weekday} className="grid grid-cols-1 items-end gap-2 rounded-lg border border-border p-2 text-xs sm:grid-cols-[minmax(7rem,1fr)_minmax(0,1fr)_minmax(0,1fr)]"><label className="flex items-center gap-2"><input name={`${weekday}_enabled`} type="checkbox" defaultChecked={Boolean(existing)}/><span>{day}</span></label><label>{text.open}<input name={`${weekday}_open`} type="time" defaultValue={existing?.open_time.slice(0, 5) ?? ""} className={inputClass}/></label><label>{text.close}<input name={`${weekday}_close`} type="time" defaultValue={existing?.close_time.slice(0, 5) ?? ""} className={inputClass}/></label></div>; })}<button disabled={busy || !staffBarber} className={buttonClass}>{text.save}</button></form>
       <div className="grid gap-3 border-t border-border pt-4"><h3 className="font-semibold">{text.breaks}</h3><form onSubmit={saveBreak} className="grid gap-2 sm:grid-cols-3"><Select value={breakForm.weekday} onChange={(v) => setBreakForm({ ...breakForm, weekday: v })}><option value="0">{weekdays[0]}</option>{weekdays.slice(1).map((d, i) => <option key={d} value={i + 1}>{d}</option>)}</Select><input name="start_time" type="time" value={breakForm.start_time} onChange={(e) => setBreakForm({ ...breakForm, start_time: e.target.value })} className={inputClass}/><input name="end_time" type="time" value={breakForm.end_time} onChange={(e) => setBreakForm({ ...breakForm, end_time: e.target.value })} className={inputClass}/><button disabled={busy || !staffBarber} className={buttonClass}>{breakForm.id ? text.update : text.saveBreak}</button></form><ul className="grid gap-2 text-sm text-muted-foreground">{breaks.filter((b) => b.barber_id === allBarberIds).map((b) => <li key={b.id} className="flex items-center justify-between gap-3"><span>{weekdays[b.weekday]} · {b.start_time.slice(0, 5)}–{b.end_time.slice(0, 5)}</span><span className="flex gap-3"><button type="button" disabled={busy} onClick={() => setBreakForm({ id: b.id, weekday: String(b.weekday), start_time: b.start_time.slice(0, 5), end_time: b.end_time.slice(0, 5) })}>{text.edit}</button><button type="button" disabled={busy} onClick={() => removeBreak(b.id)} className="text-destructive">×</button></span></li>)}</ul></div>
       <div className="grid gap-3 border-t border-border pt-4"><h3 className="font-semibold">{text.holidays}</h3><form onSubmit={(event) => { event.preventDefault(); void submit("save-holiday", { barber_id: allBarberIds, date: holidayForm.date, reason: holidayForm.reason }); }} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]"><input required type="date" min={today} value={holidayForm.date} onChange={(e) => setHolidayForm({ ...holidayForm, date: e.target.value })} className={inputClass}/><input placeholder={text.reason} value={holidayForm.reason} onChange={(e) => setHolidayForm({ ...holidayForm, reason: e.target.value })} className={inputClass}/><button disabled={busy || !staffBarber} className={buttonClass}>{text.addHoliday}</button></form><ul className="grid gap-2 text-sm">{holidays.filter((h) => h.barber_id === allBarberIds).map((h) => <li key={h.id} className="flex justify-between rounded-lg border p-2">{h.date} {h.reason}<button onClick={() => void submit("delete-holiday", { barber_id: allBarberIds, holiday_id: h.id })} className="text-destructive">×</button></li>)}</ul></div>
+      <div className="grid gap-3 border-t border-border pt-4"><h3 className="font-semibold">{blockText.title}</h3><form onSubmit={saveTimeBlock} className="grid gap-2 sm:grid-cols-2"><label className="grid gap-1 text-sm">{blockText.blockDate}<input required type="date" min={today} value={timeBlockForm.date} onChange={(event) => setTimeBlockForm({ ...timeBlockForm, date: event.target.value })} className={inputClass}/></label><label className="grid gap-1 text-sm">{blockText.start}<input required type="time" value={timeBlockForm.start_time} onChange={(event) => setTimeBlockForm({ ...timeBlockForm, start_time: event.target.value })} className={inputClass}/></label><label className="grid gap-1 text-sm">{blockText.end}<input required type="time" value={timeBlockForm.end_time} onChange={(event) => setTimeBlockForm({ ...timeBlockForm, end_time: event.target.value })} className={inputClass}/></label><label className="grid gap-1 text-sm">{blockText.reason}<input maxLength={200} value={timeBlockForm.reason} onChange={(event) => setTimeBlockForm({ ...timeBlockForm, reason: event.target.value })} className={inputClass}/></label><div className="flex flex-wrap gap-2"><button disabled={busy || !staffBarber} className={buttonClass}>{timeBlockForm.id ? blockText.edit : blockText.add}</button>{timeBlockForm.id ? <button type="button" onClick={() => setTimeBlockForm({ id: "", date: "", start_time: "14:00", end_time: "15:00", reason: "" })} className="rounded-lg border px-4 py-2.5 text-sm">{text.cancelled}</button> : null}</div></form><ul className="grid gap-2 text-sm">{timeBlocks.filter((block) => block.barber_id === allBarberIds).map((block) => <li key={block.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-2"><span>{new Intl.DateTimeFormat(ar ? "ar-SA" : "en-GB", { timeZone: "Asia/Riyadh", dateStyle: "medium" }).format(new Date(`${block.block_date}T${block.start_time.slice(0, 5)}:00+03:00`))} · {block.start_time.slice(0, 5)}–{block.end_time.slice(0, 5)}{block.reason ? ` · ${block.reason}` : ""}</span><span className="flex gap-3"><button type="button" disabled={busy} onClick={() => editTimeBlock(block)}>{blockText.edit}</button><button type="button" disabled={busy} onClick={() => removeTimeBlock(block.id)} className="text-destructive">{blockText.remove}</button></span></li>)}</ul></div>
       {isAdmin ? <div className="grid gap-3 border-t border-border pt-4"><h3 className="font-semibold">{text.serviceAssignments}</h3><div className="grid gap-2">{services.filter((s) => s.shop_id === staffBarber?.shop_id).map((s) => <label key={s.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={barberServiceIds.includes(s.id)} onChange={(e) => setBarberServiceIds((prev) => e.target.checked ? [...prev, s.id] : prev.filter((id) => id !== s.id))}/>{s.name_en} / {s.name_ar}</label>)}</div><button disabled={busy} onClick={() => void submit("assign-services", { barber_id: allBarberIds, service_ids: barberServiceIds })} className={buttonClass}>{text.assign}</button></div> : null}
     </div>;
   }

@@ -297,6 +297,7 @@ function AvailabilitySection({
   const [serviceId, setServiceId] = useState<string>(services[0]?.id ?? "");
   const [barberId, setBarberId] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+  const [selectedEnd, setSelectedEnd] = useState<string | null>(null);
   const [customer, setCustomer] = useState({ name: "", mobile: "", building: "", apartment: "" });
   const [bookingError, setBookingError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -343,21 +344,22 @@ function AvailabilitySection({
       month: "short",
     }).format(new Date(`${d}T00:00:00Z`));
   const timeLabel = (iso: string) =>
-    new Intl.DateTimeFormat(locale, {
+    new Intl.DateTimeFormat("en-US", {
       timeZone: "Asia/Riyadh",
       hour: "numeric",
       minute: "2-digit",
+      hour12: true,
     }).format(new Date(iso));
-  const demoSlots = (barber: PublicBarber) => {
-    const interval = Math.max(15, services.find((service) => service.id === serviceId)?.duration_min ?? 30);
-    const slots: string[] = [];
-    for (let minute = 14 * 60; minute + interval <= 22 * 60; minute += interval) {
-      const hour = String(Math.floor(minute / 60) - 3).padStart(2, "0");
-      const mins = String(minute % 60).padStart(2, "0");
-      slots.push(`${barber.id}:${new Date(`${date}T${hour}:${mins}:00Z`).toISOString()}`);
-    }
-    return slots;
-  };
+  const demoSlots = (barber: PublicBarber) =>
+    Array.from({ length: 12 }, (_, index) => {
+      const startHourUtc = String(7 + index).padStart(2, "0");
+      const endHourUtc = String(8 + index).padStart(2, "0");
+      return {
+        barberId: barber.id,
+        startsAt: new Date(`${date}T${startHourUtc}:00:00Z`).toISOString(),
+        endsAt: new Date(`${date}T${endHourUtc}:00:00Z`).toISOString(),
+      };
+    });
 
   const chip = (active: boolean) =>
     `max-w-full shrink-0 whitespace-normal break-words rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -452,6 +454,7 @@ function AvailabilitySection({
 
         <div className="min-w-0 max-w-full" aria-live="polite">
           <p className="mb-2 text-xs text-muted-foreground">{c.times}</p>
+          <p className="mb-3 text-xs text-amber-700">Demo times only — not confirmed real availability.</p>
           {!enabled ? (
             <p className="text-sm text-muted-foreground">{c.loading}</p>
           ) : eligible.length === 0 ? (
@@ -462,16 +465,13 @@ function AvailabilitySection({
                 <section key={barber.id} className="grid gap-2">
                   <h3 className="text-sm font-semibold">{pickLocalized(barber, "name", lang)}</h3>
                   <ul className="flex min-w-0 max-w-full flex-wrap gap-2">
-                    {demoSlots(barber).map((slot) => {
-                      const startsAt = slot.slice(barber.id.length + 1);
-                      return (
-                        <li key={slot}>
-                          <button type="button" aria-pressed={selectedSlot === startsAt && barberId === barber.id} onClick={() => { setBarberId(barber.id); setSelectedSlot(startsAt); }} className={chip(selectedSlot === startsAt && barberId === barber.id)}>
-                            {timeLabel(startsAt)}
-                          </button>
-                        </li>
-                      );
-                    })}
+                    {demoSlots(barber).map((slot) => (
+                      <li key={`${slot.startsAt}-${barber.id}`}>
+                        <button type="button" aria-pressed={selectedSlot === slot.startsAt && barberId === barber.id} onClick={() => { setBarberId(slot.barberId); setSelectedSlot(slot.startsAt); setSelectedEnd(slot.endsAt); }} className={chip(selectedSlot === slot.startsAt && barberId === barber.id)}>
+                          {timeLabel(slot.startsAt)} – {timeLabel(slot.endsAt)}
+                        </button>
+                      </li>
+                    ))}
                   </ul>
                 </section>
               ))}
@@ -480,7 +480,7 @@ function AvailabilitySection({
         </div>
         {selectedSlot && !confirmation ? (
           <form onSubmit={submitBooking} className="grid gap-3 border-t border-border pt-4">
-            <p className="font-semibold">{c.selectTime}: {timeLabel(selectedSlot)}</p>
+            <p className="font-semibold">{c.selectTime}: {timeLabel(selectedSlot)} – {selectedEnd ? timeLabel(selectedEnd) : ""}</p>
             {(["name", "mobile", "building", "apartment"] as const).map((field) => (
               <label key={field} className="grid gap-1 text-sm font-medium">
                 {field === "name" ? c.customerName : field === "mobile" ? c.mobile : field === "building" ? c.building : c.apartment}

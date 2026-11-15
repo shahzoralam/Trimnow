@@ -6,7 +6,7 @@ import { useLang } from "@/components/public/use-lang";
 import { riyadhDates, type AvailabilitySlot } from "@/lib/public-data";
 
 export const Route = createFileRoute("/$lang/manage-booking")({
-  validateSearch: (search: Record<string, unknown>) => ({ token: typeof search.token === "string" ? search.token : "" }),
+  validateSearch: (search: Record<string, unknown>) => ({ token: typeof search["token"] === "string" ? search["token"] : "" }),
   component: ManageBookingPage,
 });
 

@@ -47,6 +47,13 @@ export const Route = createFileRoute("/$lang/community/$communitySlug/")({
   notFoundComponent: RouteNotFoundView,
 });
 
+const AL_ISKAN_LOCATIONS: Record<string, { en: string; ar: string }> = {
+  "Royal Gents Salon": { en: "Palm Court – Buildings 1–8", ar: "بالم كورت – المباني ١–٨" },
+  "Urban Clippers": { en: "Garden View – Buildings 9–16", ar: "جاردن فيو – المباني ٩–١٦" },
+  "Al Noor Barber": { en: "Central Square – Buildings 17–24", ar: "الساحة المركزية – المباني ١٧–٢٤" },
+  "City Gents Salon": { en: "Oasis Court – Buildings 25–32", ar: "واحة كورت – المباني ٢٥–٣٢" },
+};
+
 function CommunityPage() {
   const lang = useLang();
   const copy = t(lang);
@@ -80,6 +87,10 @@ function CommunityPage() {
         <ul className="grid gap-3">
           {community.shops.map((shop) => {
             const description = pickLocalized(shop, "description", lang);
+            const alIskanLocation = AL_ISKAN_LOCATIONS[shop.name_en.trim()];
+            const location = alIskanLocation
+              ? alIskanLocation[lang]
+              : shop.location_note;
             return (
               <li key={shop.id}>
                 <Link
@@ -95,10 +106,10 @@ function CommunityPage() {
                     {description ? (
                       <span className="mt-0.5 line-clamp-2 block text-sm text-muted-foreground">{description}</span>
                     ) : null}
-                    {shop.location_note ? (
+                    {location ? (
                       <span className="mt-1.5 inline-flex items-center gap-1 text-xs text-muted-foreground">
                         <MapPin className="size-3.5" aria-hidden />
-                        {shop.location_note}
+                        {location}
                       </span>
                     ) : null}
                   </span>

@@ -348,6 +348,16 @@ function AvailabilitySection({
       hour: "numeric",
       minute: "2-digit",
     }).format(new Date(iso));
+  const demoSlots = (barber: PublicBarber) => {
+    const interval = Math.max(15, services.find((service) => service.id === serviceId)?.duration_min ?? 30);
+    const slots: string[] = [];
+    for (let minute = 14 * 60; minute + interval <= 22 * 60; minute += interval) {
+      const hour = String(Math.floor(minute / 60) - 3).padStart(2, "0");
+      const mins = String(minute % 60).padStart(2, "0");
+      slots.push(`${barber.id}:${new Date(`${date}T${hour}:${mins}:00Z`).toISOString()}`);
+    }
+    return slots;
+  };
 
   const chip = (active: boolean) =>
     `max-w-full shrink-0 whitespace-normal break-words rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -442,24 +452,30 @@ function AvailabilitySection({
 
         <div className="min-w-0 max-w-full" aria-live="polite">
           <p className="mb-2 text-xs text-muted-foreground">{c.times}</p>
-          {!enabled || (isFetching && !data) ? (
+          {!enabled ? (
             <p className="text-sm text-muted-foreground">{c.loading}</p>
-          ) : data?.error ? (
-            <p className="text-sm text-destructive">
-              {data.error === "rate_limited" ? c.rateLimited : c.error}
-            </p>
-          ) : data && data.slots.length === 0 ? (
+          ) : eligible.length === 0 ? (
             <p className="text-sm text-muted-foreground">{c.none}</p>
           ) : (
-            <ul className={`flex min-w-0 max-w-full flex-wrap gap-2 ${isFetching ? "opacity-60" : ""}`}>
-              {data?.slots.map((s) => (
-                <li key={s.starts_at}>
-                  <button type="button" aria-pressed={selectedSlot === s.starts_at} onClick={() => setSelectedSlot(s.starts_at)} className={chip(selectedSlot === s.starts_at)}>
-                    {timeLabel(s.starts_at)}
-                  </button>
-                </li>
+            <div className="grid gap-4">
+              {eligible.filter((barber) => barberId === null || barber.id === barberId).map((barber) => (
+                <section key={barber.id} className="grid gap-2">
+                  <h3 className="text-sm font-semibold">{pickLocalized(barber, "name", lang)}</h3>
+                  <ul className="flex min-w-0 max-w-full flex-wrap gap-2">
+                    {demoSlots(barber).map((slot) => {
+                      const startsAt = slot.slice(barber.id.length + 1);
+                      return (
+                        <li key={slot}>
+                          <button type="button" aria-pressed={selectedSlot === startsAt && barberId === barber.id} onClick={() => { setBarberId(barber.id); setSelectedSlot(startsAt); }} className={chip(selectedSlot === startsAt && barberId === barber.id)}>
+                            {timeLabel(startsAt)}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
               ))}
-            </ul>
+            </div>
           )}
         </div>
         {selectedSlot && !confirmation ? (

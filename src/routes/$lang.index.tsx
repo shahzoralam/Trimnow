@@ -65,11 +65,16 @@ function HomePage() {
 
   return (
     <section>
-      <PageHeading title={copy.homeTitle} subtitle={copy.homeSubtitle} />
+      <PageHeading
+        title={lang === "ar" ? "إسكان الدمام" : "Dammam Iskan"}
+        subtitle={lang === "ar"
+          ? "اعثر على صالون الحلاقة الأقرب إليك واحجز موعدك."
+          : "Find your nearby barber shop and book your appointment."}
+      />
       {shops.length === 0 ? (
         <EmptyState icon={Store} title={copy.noShops} hint={copy.noShopsHint} />
       ) : (
-        <ul className="grid gap-4 sm:grid-cols-2">
+        <ul className="grid gap-2.5 sm:grid-cols-2 sm:gap-3">
           {shops.map((shop) => {
             const details = SHOP_DETAILS[shop.name_en.trim()];
             const description = pickLocalized(shop, "description", lang) ||
@@ -82,16 +87,16 @@ function HomePage() {
                 <Link
                   to="/$lang/community/$communitySlug/$shopSlug"
                   params={{ lang, communitySlug: shop.community_slug, shopSlug: shop.slug }}
-                  className="group flex h-full min-h-64 flex-col rounded-2xl border border-border bg-card p-5 shadow-soft transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="group flex h-full flex-col rounded-2xl border border-border bg-card p-3.5 shadow-soft transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-4"
                 >
-                  <span className="mb-4 grid size-12 place-items-center rounded-xl bg-primary text-primary-foreground">
-                    <Store className="size-5" aria-hidden />
+                  <span className="mb-2.5 grid size-9 place-items-center rounded-lg bg-primary text-primary-foreground">
+                    <Store className="size-4" aria-hidden />
                   </span>
-                  <span className="text-lg font-semibold">{pickLocalized(shop, "name", lang)}</span>
-                  {description ? <span className="mt-1.5 text-sm text-muted-foreground">{description}</span> : null}
+                  <span className="text-base font-semibold sm:text-lg">{pickLocalized(shop, "name", lang)}</span>
+                  {description ? <span className="mt-1 text-xs text-muted-foreground">{description}</span> : null}
                   {location ? (
-                    <span className="mt-3 inline-flex items-start gap-1.5 text-sm font-medium text-foreground">
-                      <MapPin className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
+                    <span className="mt-2 inline-flex items-start gap-1 text-xs font-medium text-foreground">
+                      <MapPin className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden />
                       {location}
                     </span>
                   ) : null}

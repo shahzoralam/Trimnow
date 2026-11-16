@@ -66,14 +66,14 @@ function ShopPage() {
 
   return (
     <section>
-      <Link
-        to="/$lang/community/$communitySlug"
-        params={{ lang, communitySlug: community.slug }}
-        className="mb-5 inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
-      >
-        <BackIcon />
-        {lang === "ar" ? "إسكان الدمام" : "Dammam Iskan"}
-      </Link>
+   <Link
+  to="/$lang"
+  params={{ lang }}
+  className="mb-5 inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+>
+  <BackIcon />
+  {lang === "ar" ? "الصفحة الرئيسية" : "Home"}
+</Link>
 
       <PageHeading
         eyebrow={copy.shopEyebrow}

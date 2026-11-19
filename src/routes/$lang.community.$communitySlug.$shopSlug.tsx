@@ -350,16 +350,6 @@ function AvailabilitySection({
       minute: "2-digit",
       hour12: true,
     }).format(new Date(iso));
-  const demoSlots = (barber: PublicBarber) =>
-    Array.from({ length: 12 }, (_, index) => {
-      const startHourUtc = String(7 + index).padStart(2, "0");
-      const endHourUtc = String(8 + index).padStart(2, "0");
-      return {
-        barberId: barber.id,
-        startsAt: new Date(`${date}T${startHourUtc}:00:00Z`).toISOString(),
-        endsAt: new Date(`${date}T${endHourUtc}:00:00Z`).toISOString(),
-      };
-    });
 
   const chip = (active: boolean) =>
     `max-w-full shrink-0 whitespace-normal break-words rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -450,34 +440,34 @@ function AvailabilitySection({
               </button>
             ))}
           </div>
-        </fieldset>
+        </fieldset><div className="min-w-0 max-w-full" aria-live="polite">
+  <p className="mb-2 text-xs text-muted-foreground">{c.times}</p>
 
-        <div className="min-w-0 max-w-full" aria-live="polite">
-          <p className="mb-2 text-xs text-muted-foreground">{c.times}</p>
-          <p className="mb-3 text-xs text-amber-700">Demo times only — not confirmed real availability.</p>
-          {!enabled ? (
-            <p className="text-sm text-muted-foreground">{c.loading}</p>
-          ) : eligible.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{c.none}</p>
-          ) : (
-            <div className="grid gap-4">
-              {eligible.filter((barber) => barberId === null || barber.id === barberId).map((barber) => (
-                <section key={barber.id} className="grid gap-2">
-                  <h3 className="text-sm font-semibold">{pickLocalized(barber, "name", lang)}</h3>
-                  <ul className="flex min-w-0 max-w-full flex-wrap gap-2">
-                    {demoSlots(barber).map((slot) => (
-                      <li key={`${slot.startsAt}-${barber.id}`}>
-                        <button type="button" aria-pressed={selectedSlot === slot.startsAt && barberId === barber.id} onClick={() => { setBarberId(slot.barberId); setSelectedSlot(slot.startsAt); setSelectedEnd(slot.endsAt); }} className={chip(selectedSlot === slot.startsAt && barberId === barber.id)}>
-                          {timeLabel(slot.startsAt)} – {timeLabel(slot.endsAt)}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ))}
-            </div>
-          )}
-        </div>
+  {!enabled || (isFetching && !data) ? (
+    <p className="text-sm text-muted-foreground">{c.loading}</p>
+  ) : eligible.length === 0 || !data || data.error || data.slots.length === 0 ? (
+    <p className="text-sm text-muted-foreground">{c.none}</p>
+  ) : (
+    <ul className="flex min-w-0 max-w-full flex-wrap gap-2">
+      {data.slots.map((slot) => (
+        <li key={slot.starts_at}>
+          <button
+            type="button"
+            aria-pressed={selectedSlot === slot.starts_at}
+            onClick={() => {
+              setSelectedSlot(slot.starts_at);
+              setSelectedEnd(slot.ends_at);
+            }}
+            className={chip(selectedSlot === slot.starts_at)}
+          >
+            {timeLabel(slot.starts_at)} – {timeLabel(slot.ends_at)}
+          </button>
+        </li>
+      ))}
+    </ul>
+  )}
+</div>
+ 
         {selectedSlot && !confirmation ? (
           <form onSubmit={submitBooking} className="grid gap-3 border-t border-border pt-4">
             <p className="font-semibold">{c.selectTime}: {timeLabel(selectedSlot)} – {selectedEnd ? timeLabel(selectedEnd) : ""}</p>

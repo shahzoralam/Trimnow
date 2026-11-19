@@ -105,10 +105,10 @@ function StaffPage() {
       setHolidays(data.holidays ?? []);
       setTimeBlocks(data.time_blocks ?? []);
       setCommunities([]);
-      setShops([]);
-      setServices([]);
+      setShops(data.shops ?? []);
+      setServices(data.services ?? []);
       setBarbers([]);
-      setBookings([]);
+      setBookings(data.bookings ?? []);
       return;
     }
     const bookingQuery = supabase.from("bookings").select("*").order("starts_at");
@@ -286,10 +286,10 @@ function StaffPage() {
       {isAdmin && barbers.length ? <div className={section}><h2 className="font-semibold">{text.hours} · {text.barber}</h2><Select value={selectedBarber} onChange={(id) => void chooseBarber(id)}><option value="">{text.select}</option>{barbers.map((b) => <option key={b.id} value={b.id}>{b.name_en} / {b.name_ar}</option>)}</Select>{staffBarber ? SchedulePanel() : null}</div> : null}
       {!isAdmin && myBarber ? SchedulePanel() : null}
       {!isAdmin && !myBarber ? <p role="alert">{text.access}</p> : null}
-      {isAdmin ? <div className={section}><h2 className="font-display text-xl font-semibold">{text.bookings}</h2>{bookingRows.length === 0 ? <p className="text-sm text-muted-foreground">{text.noBookings}</p> : <ul className="grid gap-3">{bookingRows.map((booking) => {
-        const barber = barbers.find((b) => b.id === booking.barber_id);
+      {(isAdmin || role === "barber") ? <div className={section}><h2 className="font-display text-xl font-semibold">{text.bookings}</h2>{bookingRows.length === 0 ? <p className="text-sm text-muted-foreground">{text.noBookings}</p> : <ul className="grid gap-3">{bookingRows.map((booking) => {
+       const barber = barbers.find((b) => b.id === booking.barber_id) ?? myBarber;
         const service = services.find((s) => s.id === booking.service_id);
-        return <li key={booking.id} className="grid gap-2 rounded-xl border border-border p-3 sm:grid-cols-[1fr_auto] sm:items-center"><div><p className="font-semibold">{booking.customer_name} · {displayDate(booking.starts_at)}</p><p className="text-sm text-muted-foreground">{booking.customer_mobile} · {text.shop}: {shops.find((s) => s.id === booking.shop_id)?.name_en} · {text.service}: {service?.name_en} · {barber?.name_en} · {booking.building}/{booking.apartment}</p><p className="text-xs">{text.status}: {booking.status}</p></div><div className="flex flex-wrap gap-2">{booking.status === "confirmed" ? <><button className="rounded-md border px-2 py-1 text-xs" onClick={() => void changeStatus(booking.id, "completed")}>{text.completed}</button><button className="rounded-md border px-2 py-1 text-xs" onClick={() => void changeStatus(booking.id, "no_show")}>{text.noShow}</button><button className="rounded-md border px-2 py-1 text-xs" onClick={() => void changeStatus(booking.id, "cancelled")}>{text.cancelled}</button></> : null}</div></li>;
+        return <li key={booking.id} className="grid gap-2 rounded-xl border border-border p-3 sm:grid-cols-[1fr_auto] sm:items-center"><div><p className="font-semibold">{booking.customer_name} · {displayDate(booking.starts_at)}</p><p className="text-sm text-muted-foreground">{booking.customer_mobile} · {text.shop}: {shops.find((s) => s.id === booking.shop_id)?.name_en} · {text.service}: {service?.name_en} · {barber?.name_en} · {booking.building}/{booking.apartment}</p><p className="text-xs">{text.status}: {booking.status}</p></div><div className="flex flex-wrap gap-2">{isAdmin && booking.status === "confirmed" ? <><button className="rounded-md border px-2 py-1 text-xs" onClick={() => void changeStatus(booking.id, "completed")}>{text.completed}</button><button className="rounded-md border px-2 py-1 text-xs" onClick={() => void changeStatus(booking.id, "no_show")}>{text.noShow}</button><button className="rounded-md border px-2 py-1 text-xs" onClick={() => void changeStatus(booking.id, "cancelled")}>{text.cancelled}</button></> : null}</div></li>;
       })}</ul>}</div> : null}
     </>}
     {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}{notice ? <p role="status" className="text-sm text-primary">{notice}</p> : null}

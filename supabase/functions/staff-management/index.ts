@@ -55,19 +55,46 @@ Deno.serve(async (request) => {
     const { data: rateAllowed, error: rateError } = await admin.rpc("check_rate_limit", { _bucket: "staff_write", _key_hash: remoteHash, _max: 60, _window_seconds: 60 });
     if (rateError || !rateAllowed) return json({ error: "rate_limited" }, 429);
 
-    if (body.action === "get-own-availability" && isBarber && !isAdmin) {
-      const barber = await getOwnBarber(auth.user.id);
-      if (!barber) return json({ error: "barber_not_found" }, 404);
-      const todayRiyadh = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-      const [hours, breaks, holidays, timeBlocks] = await Promise.all([
-        admin.from("working_hours").select("*").eq("barber_id", barber.id).order("weekday"),
-        admin.from("breaks").select("*").eq("barber_id", barber.id).order("weekday"),
-        admin.from("holidays").select("*").eq("barber_id", barber.id).gte("date", todayRiyadh).order("date"),
-        admin.from("barber_time_blocks").select("*").eq("barber_id", barber.id).gte("block_date", todayRiyadh).order("block_date").order("start_time"),
-      ]);
-      if (hours.error || breaks.error || holidays.error || timeBlocks.error) return json({ error: "load_failed" }, 500);
-      return json({ barber, hours: hours.data, breaks: breaks.data, holidays: holidays.data, time_blocks: timeBlocks.data });
-    }
+if (body.action === "get-own-availability" && isBarber && !isAdmin) {
+  const barber = await getOwnBarber(auth.user.id);
+  if (!barber) return json({ error: "barber_not_found" }, 404);
+
+  const todayRiyadh = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Riyadh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+
+  const [hours, breaks, holidays, timeBlocks, bookings, shop, services] =
+    await Promise.all([
+      admin.from("working_hours").select("*").eq("barber_id", barber.id).order("weekday"),
+      admin.from("breaks").select("*").eq("barber_id", barber.id).order("weekday"),
+      admin.from("holidays").select("*").eq("barber_id", barber.id).gte("date", todayRiyadh).order("date"),
+      admin.from("barber_time_blocks").select("*").eq("barber_id", barber.id).gte("block_date", todayRiyadh).order("block_date").order("start_time"),
+      admin.from("bookings").select("*").eq("barber_id", barber.id).order("starts_at"),
+      admin.from("shops").select("*").eq("id", barber.shop_id).maybeSingle(),
+      admin.from("services").select("*").eq("shop_id", barber.shop_id).order("sort_order"),
+    ]);
+
+  if (
+    hours.error || breaks.error || holidays.error || timeBlocks.error ||
+    bookings.error || shop.error || services.error
+  ) {
+    return json({ error: "load_failed" }, 500);
+  }
+
+  return json({
+    barber,
+    hours: hours.data,
+    breaks: breaks.data,
+    holidays: holidays.data,
+    time_blocks: timeBlocks.data,
+    bookings: bookings.data,
+    shops: shop.data ? [shop.data] : [],
+    services: services.data,
+  });
+}
     if (body.action === "get-dashboard" && isAdmin) {
       const [communities, shops, services, barbers, bookings] = await Promise.all([
         admin.from("communities").select("*").order("name_en"),
